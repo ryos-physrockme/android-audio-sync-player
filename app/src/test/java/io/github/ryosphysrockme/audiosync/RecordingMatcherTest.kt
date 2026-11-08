@@ -56,6 +56,40 @@ class RecordingMatcherTest {
     }
 
     @Test
+    fun matchesAnExcerptWithAnEchoAndFractionalStartTime() {
+        val source = track(26)
+        val reference = features(source)
+        val offset = 11 * sr + sr / 4 // start at 11.25 seconds
+        val random = Random(107)
+        val microphone = FloatArray(5 * sr) { i ->
+            val dry = source[offset + i]
+            val reflection = if (i >= 320) source[offset + i - 320] else 0f
+            (0.45f * dry + 0.12f * reflection +
+                0.018f * (random.nextDouble() - 0.5)).toFloat()
+        }
+        val micFrames = features(microphone).takeLast(96)
+        val result = RecordingMatcher(reference).match(micFrames)
+        assertNotNull(result)
+        assertTrue("Echoed signal could not be located: $result", result!!.confident)
+        val expectedMs = offset * 1000L / sr +
+            micFrames.last().centerSample * 1000L / sr
+        assertTrue("Wrong position under echo: $result", abs(result.referencePositionMs - expectedMs) <= 225L)
+    }
+
+    @Test
+    fun reLockRequiresTwoConsistentPostSeekObservations() {
+        val gate = MatchConsensus()
+        val first = RecordingMatcher.Result(5_000, .94, .3, .64, confident = true)
+        assertNull(gate.submit(first, 10_000))
+        assertNotNull(gate.submit(first.copy(referencePositionMs = 5_800), 10_800))
+        gate.submit(null, 12_000)
+        assertNull(gate.submit(first.copy(referencePositionMs = 15_000), 12_100))
+        val recovered = gate.submit(first.copy(referencePositionMs = 15_800), 12_900)
+        assertNotNull(recovered)
+        assertTrue(recovered!!.recovered)
+    }
+
+    @Test
     fun silenceCannotProduceAMatch() {
         val reference = features(track())
         val silence = features(FloatArray(sr * 5)).takeLast(96)
