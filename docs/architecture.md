@@ -37,18 +37,17 @@ If a feature window is centered in a buffer, `t_mic` must refer to the center, n
 
 ## Matching approaches
 
-### 1. Same recording (first milestone)
+### 1. Same recording (experimental implementation)
 
-Candidate method: robust spectral landmarks or short-time spectrogram feature sequences. A single FFT frame is insufficient; matching multiple frames gives time resolution and reduces false detections, especially for repeated sections. Start with an offline evaluator before selecting an Android implementation.
+The current implementation uses a **short-time spectral feature sequence** for coarse matching. The reference is resampled to 16 kHz, the features use a 2048-sample Hann window and a 512-sample hop, and each normalized vector contains 16 log-frequency-band energies. A ~3 second rolling microphone window is compared against candidates across the selected track by average cosine similarity (coarse scan plus local refinement). The current feature positions have a 32 ms frame hop.
 
-Possible implementations:
+Initial confidence gates require a mean similarity of at least 0.72 and a margin of at least 0.075 over alternatives more than four seconds away, followed by two temporally consistent observations. **These thresholds are provisional and have not been calibrated with acoustic microphone recordings.** They must not be interpreted as statistical confidence probabilities. In particular, matches can still fail for repeated choruses, noisy rooms, quiet recordings, or speaker equalization.
 
-- A small implementation of spectral features and window matching written specifically for this project, with explicitly measured memory and CPU costs.
-- [Olaf](https://github.com/JorenSix/Olaf), a portable C acoustic-fingerprinting system, integrated through the Android Native Development Kit only after review of compatibility, licensing, and relevant patent notices.
+The reference index is held in memory and currently capped at ~21 minutes. Native Android `MediaCodec` does the decoding; linear resampling can alias high frequencies if the source sample rate is above 16 kHz. Better anti-aliasing and sub-frame temporal alignment are possible improvements.
 
-Olaf code is **not included** in this repository. Its license is AGPL-3.0, and the upstream README discusses potentially relevant patents. Do not silently copy its implementation.
+[Olaf](https://github.com/JorenSix/Olaf) remains a reference option and is **not included**. It carries AGPL-3.0 licensing and upstream patent notices; do not silently copy its implementation.
 
-Do not assume fingerprint matching gives sub-frame timing accuracy. After a confident coarse match, a local cross-correlation / generalized cross-correlation refinement may be tested for recordings of the **same signal**; microphone coloration, noise, echo, and compression can reduce its precision.
+A separate physical measurement is needed to verify **audible** synchronization, which can differ from successful feature matching by the microphone-input and headphone-output latencies.
 
 ### 2. Karaoke backing track versus commercial recording
 
@@ -80,12 +79,13 @@ A track's repeated chorus can generate several plausible offsets. Keep multiple 
 - Persist only app settings and optional extracted features; by default, do not store microphone recordings.
 - Music playback and live microphone capture should work offline.
 
-## Unresolved decisions
+## Implementation status and unresolved decisions
 
-1. Benchmark a straightforward same-recording matcher versus Olaf in an offline test, with noise and room-response changes.
-2. Select the playback implementation (Media3 or built-in Android player) and verify actual audible output latency.
-3. Decide whether matching is entirely in Kotlin or uses a native library.
-4. Decide licensing for original code before redistribution or incorporation of third-party code.
+- Same-recording spectral matching: implemented in pure Kotlin with deterministic synthetic-audio unit tests.
+- Local-file decoding and playback: implemented using Android MediaExtractor/MediaCodec and MediaPlayer, respectively; still needs hardware tests.
+- Timestamp mapping: use AudioRecord hardware timestamps when available, otherwise estimate from blocking reads; this does not remove all input/output latency.
+- Next: quantify acquisition time, false matches and audible offset with physical devices; compare with alternatives if the current prototype is unreliable.
+- No external matching library is bundled. Project licensing and relevant third-party restrictions should be decided before redistribution.
 
 ## References
 
