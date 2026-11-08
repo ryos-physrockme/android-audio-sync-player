@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">音声同期プレーヤー</string>
+    <string name="prototype_notice">試作段階：ローカル音源の再生とマイク入力の確認のみ。自動同期は未実装です。</string>
+    <string name="choose_audio">音声ファイルを選択</string>
+    <string name="no_audio">音源が選択されていません</string>
+    <string name="play_audio">再生</string>
+    <string name="pause_audio">一時停止</string>
+    <string name="start_microphone">マイクを開始</string>
+    <string name="stop_microphone">マイクを停止</string>
+    <string name="mic_idle">マイク：停止中</string>
+    <string name="mic_denied">マイクの使用が許可されていません</string>
+    <string name="mic_starting">マイク：開始しています</string>
+    <string name="mic_error">マイクを開始できませんでした</string>
+    <string name="loading">音源を読み込んでいます</string>
+    <string name="ready">再生の準備ができました</string>
+    <string name="file_error">音源を読み込めませんでした</string>
+</resources>
