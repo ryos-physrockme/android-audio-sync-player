@@ -52,13 +52,18 @@ internal class RecordingMatcher(
         // Refine by 32 ms increments around the best coarse candidate.
         val refineStart = (bestIndex - 4).coerceAtLeast(0)
         val refineEnd = (bestIndex + 4).coerceAtMost(lastStart)
+        var refinedScore = Double.NEGATIVE_INFINITY
+        var refinedIndex = bestIndex
         for (start in refineStart..refineEnd) {
             val score = similarity(live, start, 2)
-            if (score > bestScore || start == bestIndex) {
-                bestScore = score
-                bestIndex = start
+            if (score > refinedScore) {
+                refinedScore = score
+                refinedIndex = start
             }
         }
+        if (!refinedScore.isFinite()) return null
+        bestScore = refinedScore
+        bestIndex = refinedIndex
 
         // Nearby candidates are not alternatives: allow +/- 4 s around the
         // best matching position so that window overlap does not invent a tie.
