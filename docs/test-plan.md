@@ -1,5 +1,7 @@
 # Test plan: measuring audible synchronization
 
+**Current test coverage:** deterministic JVM tests exercise synthetic equal-recording matching, altered gain/noise, silence rejection, repeated segments, temporal agreement and resampling. The CI build tests compilation only; no acoustic room or headset measurements have been performed. The experiments below remain outstanding.
+
 ## What to measure
 
 The goal is not just a correct track label. It is the difference between the acoustic signal heard from the external source and the locally played reference at the listener.
