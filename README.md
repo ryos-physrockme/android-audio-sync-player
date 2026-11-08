@@ -2,7 +2,7 @@
 
 An Android app project for synchronizing local audio playback with sound captured from the phone's microphone.
 
-**Status: early development. A local-file player and microphone-input monitor have been committed, but automatic acoustic synchronization has not yet been implemented or verified on a physical device.**
+**Status: experimental automatic synchronization for the same recording is implemented. The Android app builds and its synthetic-signal tests run in CI, but real-world acoustic synchronization accuracy has not yet been measured on a physical Android device.**
 
 ## What it is for
 
@@ -26,21 +26,35 @@ The target is **acoustic synchronization**, not clock synchronization between tw
 | 2 | Karaoke accompaniment | Original song including vocals | Align different mixes/recordings |
 | 3 | Live musical performance | Reference recording | Follow tempo changes and pauses |
 
-Stage 1 is the immediate target. Stages 2 and 3 are future experiments, **not implemented features**.
+Stage 1 has an experimental, offline implementation. Stages 2 and 3 are future experiments, **not implemented features**.
 
 ### Key distinction: detection is not synchronization
 
 Recognizing a song and locating its position is only the first part. The listener hears the local audio after decoding, buffering, and headphone latency, while the microphone hears the external speaker after acoustic propagation and input buffering. A useful system needs to estimate and correct that timing difference. Bluetooth output and room noise make this harder.
 
-## Proposed Android components
+## Current implementation
 
-- **Audio input:** Android `AudioRecord`, with an explicit microphone permission prompt and an input-device choice where supported.
-- **Reference preprocessing:** decode and index the chosen local audio file on-device.
-- **Position estimation:** start with a same-recording matcher; investigate [Olaf](https://github.com/JorenSix/Olaf) and alternative fingerprints, then music-alignment features for other recordings.
-- **Playback:** an Android local-file player (`Media3 / ExoPlayer` is a candidate); coarse seek first, then small controlled corrections.
-- **Calibration and diagnostics:** adjustable timing offset; log confidence, estimated position, and correction size without storing raw microphone recordings.
+- **Reference preprocessing:** Android `MediaExtractor` and `MediaCodec` decode the selected local file, downmix to mono and linearly resample it to 16 kHz.
+- **Features:** a self-contained, streaming Kotlin implementation of Hann-windowed spectral features (2048-point Fourier transform, 512-sample hop, 16 frequency bands).
+- **Recognition:** the last 96 feature frames (about 3 seconds) are compared against the whole reference using a coarse-to-fine search. Insufficient or ambiguous matches are rejected.
+- **Continuity check:** two strong, temporally consistent observations are required before starting/repositioning playback. An interrupted reference can be reacquired.
+- **Playback:** Android `MediaPlayer` can automatically seek/start and periodically correct large estimated timing errors, subject to conservative rate limits.
+- **Calibration:** a manual offset control allows −600 to +600 ms in 10 ms steps. Positive values advance the local audio position.
+- **Privacy:** microphone audio is processed on-device; recordings are not stored or uploaded by the app.
 
-The exact matching library is **not selected yet**. Olaf is distributed under **AGPL-3.0** and includes patent notices; check licensing and relevant intellectual-property constraints before integrating its code. No Olaf code is vendored into this project.
+**Not yet implemented:** sample-accurate output compensation, automatic Bluetooth latency measurement, playback-speed drift control, automatic correction for changing song tempo, and alignment of karaoke instrumental versions to the vocal recording.
+
+The matching code is original Kotlin code. [Olaf](https://github.com/JorenSix/Olaf) remains a reference, **not a dependency**. Its AGPL-3.0 license and patent notices must be considered before any integration.
+
+## Practical trial and acceptance criteria
+
+1. Load the same recording that a **separate** speaker or computer will play.
+2. Connect wired headphones to the Android phone and tap **マイクを開始**.
+3. Start the external speaker at an arbitrary point in the song. The phone should display a candidate position and start local playback after two consistent detections.
+4. Adjust the manual timing offset if the headphone audio consistently leads or lags.
+5. Pause or seek the external player and observe whether the phone reacquires it rather than jumping to a repeated passage.
+
+**Important:** This remains a test procedure, not a guarantee that those actions will work reliably in different rooms or on different Android devices.
 
 ## Success criteria for the first prototype
 
@@ -67,13 +81,13 @@ These are acceptance tests, **not measured performance claims**.
 
 The committed Android screen supports:
 
-- Choosing a local audio file using Android's system file picker.
-- Playing, pausing and seeking that file.
-- Requesting the microphone permission and displaying the microphone input level in dBFS (without saving the capture).
-- Stopping the microphone when the activity leaves the foreground.
-- A separately tested function for calculating a playback target from a timestamped reference position.
+- Choosing a local audio file and indexing its spectral features offline.
+- Playing, pausing, and manually seeking that file.
+- Requesting microphone permission, displaying the input level, and estimating the playback position.
+- Automatically seeking/starting the player only after a stable match, with an adjustable timing offset.
+- Pausing microphone capture when the app is no longer in the foreground.
 
-**It does not yet recognize a track position or synchronize playback.** The microphone-level display is a capture smoke test, not a matcher.
+**This is an experimental synchronizer, not yet verified by physical measurements.** Spectral matching and software playback positions are not proof of audio reaching a listener at the correct time. Room acoustics, codec delays, audio route changes and repeated musical passages may cause errors. Begin tests with a wired headset and the identical local recording played by a separate speaker.
 
 Build prerequisites: Android Studio, Android SDK API 36, Java 17, Gradle 8.13 and a compatible Android Gradle Plugin/Kotlin toolchain (versions are pinned in the Gradle build files). Open the project root in Android Studio, then run the `app` configuration on an Android device with a microphone. The minimum Android API level is 26.
 
@@ -85,9 +99,9 @@ The official Gradle 8.13 Wrapper is committed and its distribution SHA-256 is pi
 
 On Windows, run `gradlew.bat :app:testDebugUnitTest :app:assembleDebug`. Android Studio can also open the repository root and use the wrapper directly.
 
-[GitHub Actions](.github/workflows/android.yml) runs these tasks on every push, validates the Gradle Wrapper, and uploads a short-lived `android-debug-apk` artifact when the build succeeds. That APK is **only a playback/microphone smoke-test build**, not an automatic synchronization app. The first tests on a real Android device are still outstanding.
+[GitHub Actions](.github/workflows/android.yml) runs these tasks on every push, validates the Gradle Wrapper, and uploads a short-lived `android-debug-apk` artifact when the build succeeds. That APK includes **experimental same-recording synchronization**. It is not yet a verified karaoke-synchronization app, and tests on a real Android device are still outstanding.
 
-Do not distribute APKs as a working synchronization product until acoustic matching and headphone latency have been implemented and measured.
+Do not describe the APK as a validated synchronization product until acoustic matching, latency and repeatability have been measured on physical devices.
 
 ## Privacy and audio rights
 

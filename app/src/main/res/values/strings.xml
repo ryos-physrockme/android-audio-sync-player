@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">音声同期プレーヤー</string>
-    <string name="prototype_notice">試作段階：ローカル音源の再生とマイク入力の確認のみ。自動同期は未実装です。</string>
+    <string name="prototype_notice">実験版：同じ録音を外部で再生したときの位置を推定し、自動再生します。実機での同期精度は未検証です。</string>
     <string name="choose_audio">音声ファイルを選択</string>
     <string name="no_audio">音源が選択されていません</string>
     <string name="play_audio">再生</string>
