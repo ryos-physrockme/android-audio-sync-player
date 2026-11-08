@@ -57,6 +57,7 @@ internal object ReferenceDecoder {
             var outputDone = false
             var resampler: MonoResampler? = null
             var outputChannels = 0
+            var decodedSampleRate = 0
             var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
             val bufferInfo = MediaCodec.BufferInfo()
 
@@ -86,8 +87,6 @@ internal object ReferenceDecoder {
                 pcmEncoding = encoding
             }
 
-            // A local variable lets output format changes validate a constant rate.
-            decodedSampleRate = 0
             refreshOutputFormat()
 
             while (!outputDone) {
@@ -178,7 +177,4 @@ internal object ReferenceDecoder {
         }
     }
 
-    // Only accessed during a single indexing invocation; replaced with a local
-    // variable below before parallel decodes are enabled.
-    private var decodedSampleRate = 0
 }
