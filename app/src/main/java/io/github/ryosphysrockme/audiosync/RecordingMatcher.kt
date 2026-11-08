@@ -65,14 +65,31 @@ internal class RecordingMatcher(
         bestScore = refinedScore
         bestIndex = refinedIndex
 
-        // Nearby candidates are not alternatives: allow +/- 4 s around the
-        // best matching position so that window overlap does not invent a tie.
-        val exclusion = (4 * SpectralFeatures.SAMPLE_RATE) / SpectralFeatures.HOP_SIZE
-        var alternative = Double.NEGATIVE_INFINITY
+        // Ignore only immediate alignment jitter (within ~0.5 s), rather
+        // than whole musical phrases. Distinct repeated passages, even when
+        // fairly close together, should count as ambiguous alternatives.
+        val exclusion = (SpectralFeatures.SAMPLE_RATE / 2) / SpectralFeatures.HOP_SIZE
+        var alternativeIndex = -1
+        var alternativeScore = Double.NEGATIVE_INFINITY
         for (i in coarse.indices) {
             val start = i * 4
-            if (abs(start - bestIndex) > exclusion) {
-                alternative = maxOf(alternative, coarse[i])
+            if (abs(start - bestIndex) > exclusion && coarse[i] > alternativeScore) {
+                alternativeScore = coarse[i]
+                alternativeIndex = start
+            }
+        }
+
+        // Refine the runner-up to the SAME resolution and scoring stride as
+        // the best match. Comparing a refined winner against a coarse
+        // runner-up would artificially inflate confidence on repeated motifs.
+        var alternative = Double.NEGATIVE_INFINITY
+        if (alternativeIndex >= 0) {
+            val secondStart = (alternativeIndex - 4).coerceAtLeast(0)
+            val secondEnd = (alternativeIndex + 4).coerceAtMost(lastStart)
+            for (start in secondStart..secondEnd) {
+                if (abs(start - bestIndex) > exclusion) {
+                    alternative = maxOf(alternative, similarity(live, start, 2))
+                }
             }
         }
         val margin = if (alternative.isFinite()) bestScore - alternative else 1.0
