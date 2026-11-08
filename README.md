@@ -77,13 +77,15 @@ The committed Android screen supports:
 
 Build prerequisites: Android Studio, Android SDK API 36, Java 17, Gradle 8.13 and a compatible Android Gradle Plugin/Kotlin toolchain (versions are pinned in the Gradle build files). Open the project root in Android Studio, then run the `app` configuration on an Android device with a microphone. The minimum Android API level is 26.
 
-The repository does not currently include the generated Gradle Wrapper scripts/JAR. To build with an already-installed Gradle 8.13:
+The official Gradle 8.13 Wrapper is committed and its distribution SHA-256 is pinned. On Linux or macOS, run:
 
 ```sh
-gradle :app:testDebugUnitTest :app:assembleDebug
+./gradlew :app:testDebugUnitTest :app:assembleDebug
 ```
 
-The same tasks are run by [GitHub Actions](.github/workflows/android.yml); check the workflow run status before treating the project as build-verified. The first tests on a real Android device are still outstanding.
+On Windows, run `gradlew.bat :app:testDebugUnitTest :app:assembleDebug`. Android Studio can also open the repository root and use the wrapper directly.
+
+[GitHub Actions](.github/workflows/android.yml) runs these tasks on every push, validates the Gradle Wrapper, and uploads a short-lived `android-debug-apk` artifact when the build succeeds. That APK is **only a playback/microphone smoke-test build**, not an automatic synchronization app. The first tests on a real Android device are still outstanding.
 
 Do not distribute APKs as a working synchronization product until acoustic matching and headphone latency have been implemented and measured.
 
