@@ -2,7 +2,7 @@
 
 An Android app project for synchronizing local audio playback with sound captured from the phone's microphone.
 
-**Status: early development. There is not yet a verified, automatically synchronizing Android app in this repository.**
+**Status: early development. A local-file player and microphone-input monitor have been committed, but automatic acoustic synchronization has not yet been implemented or verified on a physical device.**
 
 ## What it is for
 
@@ -60,11 +60,32 @@ These are acceptance tests, **not measured performance claims**.
 - `docs/architecture.md` — synchronization model, design options, failure cases.
 - `docs/test-plan.md` — repeatable experiments, measures and acceptance criteria.
 - `docs/references.md` — technical references and licensing considerations.
-- `app/` — Android implementation as development proceeds.
+- `app/` — Android project containing a basic local-file player, microphone-level monitor, and unit-tested timing calculation.
+- `.github/workflows/android.yml` — automated JVM unit tests and Android debug build.
 
-## Development status
+## Development status and build instructions
 
-This repository was created to develop the application. Build instructions will be added alongside an actual, buildable Android project. Do not assume an installable APK exists until it has been built and tested.
+The committed Android screen supports:
+
+- Choosing a local audio file using Android's system file picker.
+- Playing, pausing and seeking that file.
+- Requesting the microphone permission and displaying the microphone input level in dBFS (without saving the capture).
+- Stopping the microphone when the activity leaves the foreground.
+- A separately tested function for calculating a playback target from a timestamped reference position.
+
+**It does not yet recognize a track position or synchronize playback.** The microphone-level display is a capture smoke test, not a matcher.
+
+Build prerequisites: Android Studio, Android SDK API 36, Java 17, Gradle 8.13 and a compatible Android Gradle Plugin/Kotlin toolchain (versions are pinned in the Gradle build files). Open the project root in Android Studio, then run the `app` configuration on an Android device with a microphone. The minimum Android API level is 26.
+
+The repository does not currently include the generated Gradle Wrapper scripts/JAR. To build with an already-installed Gradle 8.13:
+
+```sh
+gradle :app:testDebugUnitTest :app:assembleDebug
+```
+
+The same tasks are run by [GitHub Actions](.github/workflows/android.yml); check the workflow run status before treating the project as build-verified. The first tests on a real Android device are still outstanding.
+
+Do not distribute APKs as a working synchronization product until acoustic matching and headphone latency have been implemented and measured.
 
 ## Privacy and audio rights
 
