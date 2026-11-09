@@ -78,6 +78,14 @@ The replacement uses 1.05x and 0.95x speed changes for approximately one second 
 
 Media3 may buffer when its playback parameters change. Record any such buffering separately from the original `seekTo()` stalls; do not claim artifact-free playback until device testing.
 
+## Four-button 50 ms and 100 ms adjustment (v0.2.11-dev)
+
+- Verify the order on portrait and landscape screens: `−100 ms`, `−50 ms`, `＋50 ms`, `＋100 ms`, with all buttons visible.
+- While the player is active, each button must request a correction **without seeking or pausing**.
+- A 100 ms forward adjustment should use approximately 1.05x speed for about two seconds; a negative adjustment should use 0.95x for about two seconds, returning to 1.00x afterwards.
+- Mix steps (e.g. `+100`, `+50`, `−100`, `−50`) and verify the pending correction returns to zero, without changing the stored initial headset offset.
+- Confirm repeated taps remain subject to the existing ±500 ms pending limit and the controls are disabled when local playback is paused.
+
 ## What to measure
 
 The goal is not just a correct track label. It is the difference between the acoustic signal heard from the external source and the locally played reference at the listener.

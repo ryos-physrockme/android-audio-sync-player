@@ -29,6 +29,35 @@ class ManualNudgeTest {
     }
 
     @Test
+    fun hundredMillisecondButtonsUseTheSameSpeedController() {
+        val forward = ManualNudge()
+        assertEquals(100L, forward.request(ManualNudge.LARGE_STEP_MS))
+        assertEquals(1.05f, forward.advance(0L, wasPlaying = true), 1e-6f)
+        repeat(10) { forward.advance(200L, wasPlaying = true) }
+        assertFalse(forward.active)
+        assertEquals(1f, forward.speed, 1e-6f)
+
+        val backward = ManualNudge()
+        assertEquals(-100L, backward.request(-ManualNudge.LARGE_STEP_MS))
+        assertEquals(0.95f, backward.advance(0L, wasPlaying = true), 1e-6f)
+        repeat(10) { backward.advance(200L, wasPlaying = true) }
+        assertFalse(backward.active)
+        assertEquals(1f, backward.speed, 1e-6f)
+    }
+
+    @Test
+    fun mixedSizeButtonsAccumulateAndCanCancel() {
+        val control = ManualNudge()
+        assertEquals(100L, control.request(ManualNudge.LARGE_STEP_MS))
+        assertEquals(50L, control.request(ManualNudge.STEP_MS))
+        assertEquals(-100L, control.request(-ManualNudge.LARGE_STEP_MS))
+        assertEquals(50.0, control.remainingCorrectionMs, 1e-7)
+        assertEquals(50L, control.requestedTotalMs)
+        assertEquals(-50L, control.request(-ManualNudge.STEP_MS))
+        assertFalse(control.active)
+    }
+
+    @Test
     fun nothingIsConsumedDuringPauseOrBuffering() {
         val nudge = ManualNudge()
         nudge.request(50L)

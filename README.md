@@ -217,6 +217,22 @@ This experiment prioritizes continuous listening over instantaneous 50 ms moveme
 
 **Testing:** pure JVM tests cover forward/backward changes, repeated taps, cancellation, buffering time and bounded queues. A dedicated Android emulator test exercises Media3's speed setting and playback intent. Neither substitutes for an audible end-to-end device test.
 
+## Four manual timing controls (v0.2.11-dev)
+
+The four timing adjustment buttons are arranged in a single row, with the larger corrections on the outside:
+
+```text
+[−100 ms] [−50 ms] [+50 ms] [+100 ms]
+```
+
+- Negative values delay local playback relative to the external recording; positive values bring local playback ahead.
+- **The existing smooth adjustment method is unchanged.** At 0.95x or 1.05x speed, a 50 ms request takes roughly 1 second, while a 100 ms request takes roughly 2 seconds. Playback is not paused or sought.
+- Multiple taps, including combinations of 50 ms and 100 ms, add to the pending correction; opposite signs cancel outstanding time. The ±500 ms maximum pending correction remains in force.
+- The buttons are enabled only while the local recording is playing. The small controls use short labels and reduced minimum width for narrow portrait screens.
+- The separate saved headset offset slider still applies only to the next initial synchronization. The correction buttons do not change its value.
+
+This is still experimental speed-based time adjustment. Audio speed changes may sound different or trigger buffering on some Android devices; audible continuity and physical timing precision still require on-device evaluation.
+
 ## Development status and build instructions
 
 The committed Android screen supports:
