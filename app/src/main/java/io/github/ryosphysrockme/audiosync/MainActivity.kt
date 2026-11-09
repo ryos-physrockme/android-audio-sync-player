@@ -1131,6 +1131,10 @@ class MainActivity : ComponentActivity() {
             pendingAutoStart = false
             microphoneButton.setText(R.string.stop_microphone)
             matchText.text = "外部音声を約3秒取得してから照合を始めます。"
+            recognitionStateText.text = "外部音声を待っています"
+            recognitionStateText.setTextColor(UiDesign.PRIMARY)
+            recognitionStateText.visibility = View.VISIBLE
+            recognitionCandidateText.visibility = View.GONE
             microphoneText.text = "マイク入力中（音声は保存しません）"
             Thread({
                 monitorMicrophone(active, RecordingMatcher(index))
@@ -1240,9 +1244,27 @@ class MainActivity : ComponentActivity() {
             match, observationNs / 1_000_000L, similarityThreshold = selectedThreshold
         )
         if (match == null) {
+            recognitionStateText.text = "音源を探索中"
+            recognitionStateText.setTextColor(UiDesign.SECONDARY)
+            recognitionCandidateText.visibility = View.GONE
             matchText.text = "照合保留：静音、または照合に使える音響特徴が不足しています。"
             return
         }
+
+        // The current candidate and the decision are visible even when the
+        // diagnostics section is collapsed. A candidate is not a confirmed lock.
+        recognitionStateText.text = MatchPresentation.status(evaluation.status)
+        recognitionStateText.setTextColor(when (evaluation.status) {
+            MatchConsensus.Status.ACCEPTED,
+            MatchConsensus.Status.TRACKING -> UiDesign.SUCCESS
+            MatchConsensus.Status.WAITING_FOR_CONFIRMATION -> UiDesign.PRIMARY
+            else -> UiDesign.SECONDARY
+        })
+        recognitionCandidateText.text = MatchPresentation.candidate(
+            match.referencePositionMs, match.score
+        )
+        recognitionCandidateText.visibility = View.VISIBLE
+
         val quality = "一致度 %.3f（設定%.2f以上）／他候補との差 %.3f（0.075以上）"
             .format(Locale.US, match.score, selectedThreshold, match.margin)
         val reason = when (evaluation.status) {
@@ -1257,10 +1279,7 @@ class MainActivity : ComponentActivity() {
         matchText.text = "推定位置 %s\n%s\n%s".format(
             Locale.JAPAN, formatTime(match.referencePositionMs.toInt()), quality, reason
         )
-        val accepted = evaluation.acceptance
-        if (accepted != null) {
-            alignPlayer(accepted, observationNs)
-        }
+        evaluation.acceptance?.let { alignPlayer(it, observationNs) }
     }
 
     private fun alignPlayer(accepted: MatchConsensus.Acceptance, observationNs: Long) {
