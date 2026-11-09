@@ -51,7 +51,7 @@ class CompactScreenInstrumentedTest {
                 }
                 assertTrue("Details should be collapsed initially",
                     labels.none {
-                        it.visibility == View.VISIBLE &&
+                        it.isShown &&
                             it.text.toString().contains("再生開始の一致度閾値")
                     })
                 detailButton.performClick()
