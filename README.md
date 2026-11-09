@@ -77,6 +77,23 @@ These are acceptance tests, **not measured performance claims**.
 - `app/` — Android project containing a basic local-file player, microphone-level monitor, and unit-tested timing calculation.
 - `.github/workflows/android.yml` — automated JVM unit tests and Android debug build.
 
+## Troubleshooting: position shown, but playback does not begin
+
+The displayed candidate timestamp is a *possible* match, not an automatic-start confirmation. The app requires both a sufficiently distinctive match and a second temporally consistent match. The current numerical thresholds are experimental, not calibrated probabilities.
+
+Version 0.2.1-dev adds separate diagnostic text:
+
+- `再生保留：一致度が不足しています` — the spectral similarity is too low; use a louder, clearer playback of the **same exact recording**.
+- `再生保留：似た候補が複数あります` — multiple parts of the reference sound similar; the app will not guess which chorus it is.
+- `再生待機：2回目の位置確認が必要です` — one candidate passed the initial gate; confirmation is pending.
+- `再生保留：候補時刻の進み方が一致しません` — the candidate did not advance consistently with time.
+- `プレーヤー：シーク完了待ち` — the match was accepted and an asynchronous seek was requested. If that completion callback is delayed beyond 1.2 s, the app tries to start anyway and reports the attempt.
+- `プレーヤー：再生中` — Android's MediaPlayer reports playback has started. This does **not** prove audio reaches the headphones at a correctly synchronized instant.
+
+For the first trial, select the identical file on both devices, use wired headphones, keep the Android app visible, tap `マイクを開始`, and then play the recording from an external speaker. Do **not** tap the manual `再生` button: it intentionally stops microphone synchronization.
+
+If playback does not start, report the full lines shown for `推定位置`, `一致度`, `他候補との差`, and `プレーヤー`; these distinguish recognition failures from player failures without collecting recordings.
+
 ## Development status and build instructions
 
 The committed Android screen supports:

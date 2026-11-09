@@ -143,6 +143,19 @@ internal class MatchConsensus {
     data class Observation(val positionMs: Long, val capturedAtMs: Long)
     data class Acceptance(val observation: Observation, val recovered: Boolean)
 
+    /** A diagnostic status rather than a calibrated statistical probability. */
+    enum class Status {
+        NO_MATCH,
+        LOW_SIMILARITY,
+        AMBIGUOUS,
+        WAITING_FOR_CONFIRMATION,
+        CANDIDATE_CHANGED,
+        ACCEPTED,
+        TRACKING
+    }
+
+    data class Evaluation(val status: Status, val acceptance: Acceptance? = null)
+
     private var accepted: Observation? = null
     private var pending: Observation? = null
 
@@ -151,13 +164,23 @@ internal class MatchConsensus {
         pending = null
     }
 
-    fun submit(
+    /**
+     * UI callers use [evaluate] to distinguish insufficient confidence from
+     * a missing player callback. Kept separate from the matcher itself.
+     */
+    fun evaluate(
         result: RecordingMatcher.Result?,
         capturedAtMs: Long
-    ): Acceptance? {
-        if (result == null || !result.confident) {
+    ): Evaluation {
+        if (result == null) {
             pending = null
-            return null
+            return Evaluation(Status.NO_MATCH)
+        }
+        if (!result.confident) {
+            pending = null
+            return Evaluation(
+                if (result.score < 0.72) Status.LOW_SIMILARITY else Status.AMBIGUOUS
+            )
         }
 
         val current = Observation(result.referencePositionMs, capturedAtMs)
@@ -165,7 +188,7 @@ internal class MatchConsensus {
         if (previousAccepted != null && isContinuous(previousAccepted, current, 450L)) {
             accepted = current
             pending = null
-            return Acceptance(current, recovered = false)
+            return Evaluation(Status.TRACKING, Acceptance(current, recovered = false))
         }
 
         val previousPending = pending
@@ -173,12 +196,21 @@ internal class MatchConsensus {
             val recovered = previousAccepted != null
             accepted = current
             pending = null
-            return Acceptance(current, recovered)
+            return Evaluation(Status.ACCEPTED, Acceptance(current, recovered))
         }
 
         pending = current
-        return null
+        return Evaluation(
+            if (previousPending == null) Status.WAITING_FOR_CONFIRMATION
+            else Status.CANDIDATE_CHANGED
+        )
     }
+
+    /** Compatibility with original unit tests. */
+    fun submit(
+        result: RecordingMatcher.Result?,
+        capturedAtMs: Long
+    ): Acceptance? = evaluate(result, capturedAtMs).acceptance
 
     private fun isContinuous(previous: Observation, next: Observation, toleranceMs: Long): Boolean {
         val elapsed = next.capturedAtMs - previous.capturedAtMs
