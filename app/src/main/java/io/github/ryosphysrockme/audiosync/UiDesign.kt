@@ -14,15 +14,15 @@ import android.widget.TextView
  * Kept separate from playback/matching state and safe to use on API 26+.
  */
 internal object UiDesign {
-    const val BACKGROUND = 0xff11121e.toInt()
-    const val SURFACE = 0xff222435.toInt()
-    const val SURFACE_RAISED = 0xff2b2e43.toInt()
-    const val SURFACE_STRONG = 0xff343650.toInt()
-    const val OUTLINE = 0xff41435c.toInt()
-    const val PRIMARY = 0xffa08bff.toInt()
-    const val PRIMARY_DARK = 0xff6550d4.toInt()
-    const val FOREGROUND = 0xfff4f2ff.toInt()
-    const val SECONDARY = 0xffafb0c7.toInt()
+    const val BACKGROUND = 0xff161820.toInt()
+    const val SURFACE = 0xff20232c.toInt()
+    const val SURFACE_RAISED = 0xff282b37.toInt()
+    const val SURFACE_STRONG = 0xff343845.toInt()
+    const val OUTLINE = 0xff414653.toInt()
+    const val PRIMARY = 0xffa99aff.toInt()
+    const val PRIMARY_DARK = 0xff7766d7.toInt()
+    const val FOREGROUND = 0xfff1f2f6.toInt()
+    const val SECONDARY = 0xffaeb3bf.toInt()
     const val SUCCESS = 0xff78e0bd.toInt()
     const val ERROR = 0xffffa9b0.toInt()
 
@@ -36,11 +36,9 @@ internal object UiDesign {
             if (bordered) setStroke(dp(context, 1), OUTLINE)
         }
 
-    fun primary(context: Context, radiusDp: Int = 19): GradientDrawable =
-        GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(0xff9877ff.toInt(), PRIMARY_DARK)
-        ).apply { cornerRadius = dp(context, radiusDp).toFloat() }
+    // A single solid accent is more legible and less decorative than a gradient.
+    fun primary(context: Context, radiusDp: Int = 14): GradientDrawable =
+        rounded(context, PRIMARY, radiusDp)
 
     fun text(
         context: Context,
