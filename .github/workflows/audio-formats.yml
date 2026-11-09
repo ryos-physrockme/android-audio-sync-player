@@ -1,0 +1,46 @@
+name: Android compressed-audio smoke tests
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/java/io/github/ryosphysrockme/audiosync/ReferenceDecoder.kt'
+      - 'app/src/main/java/io/github/ryosphysrockme/audiosync/ExtractorSource.kt'
+      - 'app/src/androidTest/**'
+      - 'scripts/generate-audio-format-fixtures.sh'
+      - '.github/workflows/audio-formats.yml'
+  workflow_dispatch:
+
+jobs:
+  format-smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Generate synthetic MP3 and AAC files
+        run: |
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y ffmpeg
+          fi
+          bash scripts/generate-audio-format-fixtures.sh
+      - name: Allow hardware acceleration when available
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Android emulator format tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_4
+          disable-animations: true
+          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest --stacktrace
