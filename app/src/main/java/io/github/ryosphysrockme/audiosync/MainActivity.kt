@@ -15,7 +15,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.view.ViewGroup
 import android.widget.Button
@@ -27,7 +26,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import java.util.ArrayDeque
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.sqrt
 
@@ -58,15 +56,17 @@ class MainActivity : ComponentActivity() {
 
     private var microphoneRecorder: AudioRecord? = null
     private val consensus = MatchConsensus()
+    private val initialAlignment = InitialAlignmentPolicy()
+    private val timelineErrors = TimelineErrorHistory()
     private var correctionOffsetMs = 0L
     private var pendingAutoStart = false
-    private var lastCorrectionElapsedMs = 0L
     private var lastPlaybackEvent = "待機中"
 
     private lateinit var fileText: TextView
     private lateinit var playbackText: TextView
     private lateinit var microphoneText: TextView
     private lateinit var matchText: TextView
+    private lateinit var timelineText: TextView
     private lateinit var playerStatusText: TextView
     private lateinit var offsetText: TextView
     private lateinit var playButton: Button
@@ -233,6 +233,13 @@ class MainActivity : ComponentActivity() {
         }
         container.addView(matchText, fullWidth())
 
+        timelineText = TextView(this).apply {
+            text = "推定時刻差：初回同期後に表示（再生中は自動シークしません）"
+            textSize = 15f
+            setPadding(0, 0, 0, 14)
+        }
+        container.addView(timelineText, fullWidth())
+
         playerStatusText = TextView(this).apply {
             text = "プレーヤー：停止中"
             textSize = 15f
@@ -285,7 +292,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun offsetLabel(offsetMs: Long): String =
-        "出力位置の手動補正：%+d ms（＋はイヤホン側を先に進める）"
+        "次の初回同期位置の補正：%+d ms（＋はスマホ側を先に進める）"
             .format(Locale.JAPAN, offsetMs)
 
     private fun loadAudioFile(uri: Uri) {
@@ -294,6 +301,9 @@ class MainActivity : ComponentActivity() {
         val token = ++indexGeneration
         reference = null
         consensus.reset()
+        initialAlignment.reset()
+        timelineErrors.reset()
+        timelineText.text = "推定時刻差：初回同期後に表示（再生中は自動シークしません）"
         prepared = false
         pendingAutoStart = false
         lastPlaybackEvent = "新しいファイルを準備しています。"
@@ -332,8 +342,10 @@ class MainActivity : ComponentActivity() {
                     pendingAutoStart = false
                     try {
                         if (!next.isPlaying) next.start()
+                        initialAlignment.onPlayerStarted()
+                        timelineErrors.reset()
                         playButton.setText(R.string.pause_audio)
-                        lastPlaybackEvent = "位置変更が完了し、自動再生を要求しました。"
+                        lastPlaybackEvent = "初回同期完了。以後は自動シークせず再生します。"
                         updatePlayerStatus()
                     } catch (error: IllegalStateException) {
                         lastPlaybackEvent = "再生開始に失敗：" +
@@ -477,7 +489,9 @@ class MainActivity : ComponentActivity() {
             microphoneRecorder = active
             captureRunning = true
             consensus.reset()
-            lastCorrectionElapsedMs = 0L
+            initialAlignment.reset()
+            timelineErrors.reset()
+            timelineText.text = "推定時刻差：外部音源の認識と初回同期を待っています。"
             pendingAutoStart = false
             microphoneButton.setText(R.string.stop_microphone)
             matchText.text = "外部音声を約3秒取得してから照合を始めます。"
@@ -593,7 +607,7 @@ class MainActivity : ComponentActivity() {
             MatchConsensus.Status.WAITING_FOR_CONFIRMATION -> "再生待機：2回目の位置確認が必要です"
             MatchConsensus.Status.CANDIDATE_CHANGED -> "再生保留：候補時刻の進み方が一致しません"
             MatchConsensus.Status.ACCEPTED -> "位置を確認しました"
-            MatchConsensus.Status.TRACKING -> "連続して位置を追跡しています"
+            MatchConsensus.Status.TRACKING -> "位置を追跡中（自動シークは初回だけ）"
         }
         matchText.text = "推定位置 %s\n%s\n%s".format(
             Locale.JAPAN, formatTime(match.referencePositionMs.toInt()), quality, reason
@@ -606,56 +620,68 @@ class MainActivity : ComponentActivity() {
 
     private fun alignPlayer(accepted: MatchConsensus.Acceptance, observationNs: Long) {
         val active = player ?: return
-        if (!prepared || !captureRunning || pendingAutoStart) return
+        if (!prepared || !captureRunning) return
         val nowMs = System.nanoTime() / 1_000_000L
+        val capturedMs = observationNs / 1_000_000L
         val target = PlaybackTiming.targetPositionMillis(
             referencePositionAtCaptureMs = accepted.observation.positionMs,
-            captureClockMs = observationNs / 1_000_000L,
-            nowClockMs = maxOf(nowMs, observationNs / 1_000_000L),
-            outputLatencyMs = 0L, // Output hardware latency is not measured.
+            captureClockMs = capturedMs,
+            nowClockMs = maxOf(nowMs, capturedMs),
+            outputLatencyMs = 0L, // Not a measured headset or output-device latency.
             userOffsetMs = correctionOffsetMs
         ).coerceIn(0L, (active.duration - 100L).coerceAtLeast(0L))
 
         try {
-            val currentlyPlaying = active.isPlaying
-            val positionError = target - active.currentPosition
-            val nowElapsedMs = SystemClock.elapsedRealtime()
-            if (!currentlyPlaying) {
+            // A listening session makes ONE automatic seek. All later accepted
+            // estimates are diagnostics only, not seek or speed commands.
+            if (initialAlignment.tryRequestInitialSeek()) {
                 pendingAutoStart = true
-                lastPlaybackEvent = "自動再生のため再生位置を %s に変更中。"
+                lastPlaybackEvent = "初回同期位置 %s に移動しています。"
                     .format(Locale.JAPAN, formatTime(target.toInt()))
+                timelineText.text = "初回のシーク中。再生開始後の推定時刻差を観測します。"
                 active.seekTo(target.toInt())
-                lastCorrectionElapsedMs = nowElapsedMs
                 updatePlayerStatus()
 
-                // Some devices or short tracks do not deliver the asynchronous
-                // seek callback promptly while paused. Do not remain silent
-                // forever after a successful high-confidence match.
+                // Some MediaPlayer implementations deliver completion late.
+                // This is a one-time start fallback, NOT another seek.
                 uiHandler.postDelayed({
                     if (player === active && prepared && captureRunning && pendingAutoStart) {
                         pendingAutoStart = false
                         try {
                             if (!active.isPlaying) active.start()
+                            initialAlignment.onPlayerStarted()
+                            timelineErrors.reset()
                             playButton.setText(R.string.pause_audio)
-                            lastPlaybackEvent = "シーク完了通知が遅れたため、再生を開始しました。"
+                            lastPlaybackEvent = "シーク完了通知が遅れたため再生しました。再シークは無効です。"
                         } catch (error: IllegalStateException) {
-                            lastPlaybackEvent = "自動再生に失敗：" +
-                                (error.localizedMessage ?: "MediaPlayerの状態異常")
+                            lastPlaybackEvent = "初回の自動再生に失敗：" +
+                                (error.localizedMessage ?: "MediaPlayerの状態異常") +
+                                "。マイクを停止・開始して再試行してください。"
                         }
                         updatePlayerStatus()
                     }
                 }, 1200L)
-            } else if (
-                abs(positionError) >= 220L &&
-                nowElapsedMs - lastCorrectionElapsedMs >= 1_500L
-            ) {
-                active.seekTo(target.toInt())
-                lastCorrectionElapsedMs = nowElapsedMs
-                matchText.append("\n再生位置を補正：%+d ms".format(Locale.JAPAN, positionError))
-            } else {
-                matchText.append("\n同期追跡中（推定ずれ %+d ms）".format(
-                    Locale.JAPAN, positionError
-                ))
+                return
+            }
+
+            // Continue acoustic tracking, but do not attempt to control playback.
+            if (initialAlignment.phase == InitialAlignmentPolicy.Phase.PLAYING &&
+                active.isPlaying) {
+                val differenceMs = target - active.currentPosition.toLong()
+                val summary = timelineErrors.add(differenceMs)
+                timelineText.text = (
+                    "推定時刻差（外部−スマホ）：%+d ms（直近中央値）\n" +
+                        "追跡開始時：%+d ms、そこからの変化：%+d ms（%d回）\n" +
+                        "※実際に耳に届く音の差ではありません。自動シークなし。"
+                    ).format(
+                        Locale.JAPAN,
+                        summary.currentMedianMs,
+                        summary.firstMs,
+                        summary.changeMs,
+                        summary.samples
+                    )
+            } else if (pendingAutoStart) {
+                timelineText.text = "初回のシーク完了を待機中（再シークはしません）。"
             }
         } catch (error: IllegalStateException) {
             lastPlaybackEvent = "再生位置の制御に失敗：" +

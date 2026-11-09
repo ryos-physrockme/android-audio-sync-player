@@ -8,6 +8,23 @@ When a candidate time is displayed but the phone remains silent, capture these o
 
 Version 0.2.1-dev uses a bounded fallback for the MediaPlayer seek-completion callback. Check whether the fallback was used and measure any extra audible timing error if it is.
 
+## One-initial-seek experiment (v0.2.3-dev)
+
+The immediate user-observed failure was repeated forward/backward seeking during continuous music playback. The experimental app now **allows only the initial automatic seek** in each microphone session, then keeps recognizing external audio for diagnostics without seeking or changing playback speed.
+
+Procedure:
+
+1. Select an identical reference file on Android and the external playback device.
+2. Connect wired headphones, begin microphone monitoring, and play the source on the external device.
+3. Record whether initial automatic playback starts, and whether any automatic jumps occur after it starts.
+4. Watch the on-screen **estimated timeline difference (external minus phone)**, its recent median, change since the first accepted post-start estimate, and the observation count. The estimate is not the acoustic offset at the ear.
+5. Listen for persistent constant offset, increasing lag/lead, and random jitter; make a note of duration.
+6. If the external source is paused, skipped, or restarted, note that re-alignment requires stopping and restarting microphone monitoring in this trial.
+
+The success criterion for this experiment is absence of automatic back-and-forth seeks during a continuously playing same-source recording, **not** a claim that the two acoustic outputs are aligned to any fixed precision.
+
+A possible subsequent strategy, inspired by manual correction, is to pause the local player when it runs *ahead* of the external media timeline and resume only after the external source catches up. This must be evaluated separately because pause/resume itself creates an audible gap and the signal estimate can be noisy. It is **not implemented** in v0.2.3-dev.
+
 ## What to measure
 
 The goal is not just a correct track label. It is the difference between the acoustic signal heard from the external source and the locally played reference at the listener.
