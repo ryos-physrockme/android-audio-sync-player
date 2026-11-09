@@ -479,9 +479,9 @@ class MainActivity : ComponentActivity() {
         toolbar.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_launcher_foreground)
             contentDescription = null
-        }, LinearLayout.LayoutParams(dip(38), dip(38)))
+        }, LinearLayout.LayoutParams(dip(31), dip(31)))
         toolbar.addView(
-            UiDesign.text(this, "音声同期プレーヤー", 19f, medium = true),
+            UiDesign.text(this, "音声同期プレーヤー", 18f, medium = true),
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = dip(7)
             }
@@ -492,8 +492,8 @@ class MainActivity : ComponentActivity() {
         val fileCard = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 17, true)
-            setPadding(dip(14), dip(13), dip(12), dip(13))
+            background = UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 11)
+            setPadding(dip(13), dip(11), dip(11), dip(11))
         }
         val fileContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -517,55 +517,85 @@ class MainActivity : ComponentActivity() {
         fileSelectButton.text = "変更"
         UiDesign.button(
             fileSelectButton,
-            UiDesign.rounded(this, UiDesign.SURFACE_STRONG, 12),
+            UiDesign.rounded(this, UiDesign.SURFACE_STRONG, 10),
             UiDesign.FOREGROUND,
             13f
         )
         fileCard.addView(fileSelectButton, LinearLayout.LayoutParams(dip(70), dip(43)))
-        main.addView(fileCard, rowParams().apply { topMargin = dip(18) })
+        main.addView(fileCard, rowParams().apply { topMargin = dip(17) })
 
         // The large sync button is the only primary action.
         val syncCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            background = UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 23, true)
-            setPadding(dip(16), dip(25), dip(16), dip(23))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dip(16), 0, dip(4))
         }
         syncStateText = UiDesign.text(
             this, "音源を選択してください", 17f, UiDesign.SECONDARY, medium = true
-        ).apply { gravity = Gravity.CENTER }
+        ).apply { gravity = Gravity.START }
         syncCard.addView(syncStateText, rowParams())
 
         detach(microphoneButton)
         UiDesign.button(
             microphoneButton,
             UiDesign.primary(this),
-            UiDesign.FOREGROUND,
-            20f
+            UiDesign.BACKGROUND,
+            18f
         )
-        syncCard.addView(microphoneButton, rowParams(dip(66)).apply {
-            topMargin = dip(19)
+        syncCard.addView(microphoneButton, rowParams(dip(56)).apply {
+            topMargin = dip(13)
         })
-        main.addView(syncCard, rowParams().apply { topMargin = dip(18) })
+
+        // Two compact lines provide feedback even when diagnostics are hidden.
+        recognitionStateText = UiDesign.text(
+            this, "外部音声の認識待ち", 14f, UiDesign.SECONDARY, medium = true
+        )
+        recognitionStateText.visibility = View.GONE
+        syncCard.addView(recognitionStateText, rowParams().apply {
+            topMargin = dip(12)
+        })
+        recognitionCandidateText = UiDesign.text(
+            this, "", 12f, UiDesign.SECONDARY
+        )
+        recognitionCandidateText.visibility = View.GONE
+        syncCard.addView(recognitionCandidateText, rowParams().apply {
+            topMargin = dip(3)
+        })
+        main.addView(syncCard, rowParams().apply { topMargin = dip(17) })
+
+        // The offset for the NEXT automatic lock is a regular visible setting.
+        // It does not affect the current playback position.
+        val offsetSection = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dip(9), 0, dip(2))
+        }
+        detach(offsetText)
+        styleText(offsetText, 14f, UiDesign.FOREGROUND, medium = true)
+        offsetSection.addView(offsetText, rowParams())
+        detach(offsetBar)
+        offsetBar.progressTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
+        offsetBar.thumbTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
+        offsetSection.addView(offsetBar, rowParams().apply { topMargin = dip(4) })
+        main.addView(offsetSection, rowParams().apply { topMargin = dip(13) })
 
         // Keep parameters and diagnostics available without consuming the
         // main player's space during routine listening.
         val detailPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            background = UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 17, true)
-            setPadding(dip(16), dip(18), dip(16), dip(18))
+            background = UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 10)
+            setPadding(dip(14), dip(14), dip(14), dip(17))
         }
         val detailsToggle = Button(this).apply {
-            text = "詳細設定・診断  ▾"
+            text = "設定・診断  ▾"
             UiDesign.button(
-                this, UiDesign.rounded(this@MainActivity, UiDesign.SURFACE_RAISED, 13),
+                this, UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 8),
                 UiDesign.SECONDARY, 14f
             )
             setOnClickListener {
                 val expanded = detailPanel.visibility != View.VISIBLE
                 detailPanel.visibility = if (expanded) View.VISIBLE else View.GONE
-                text = if (expanded) "詳細設定・診断  ▴" else "詳細設定・診断  ▾"
+                text = if (expanded) "設定・診断  ▴" else "設定・診断  ▾"
             }
         }
         main.addView(detailsToggle, rowParams(dip(44)).apply { topMargin = dip(16) })
@@ -578,13 +608,12 @@ class MainActivity : ComponentActivity() {
         similarityBar.thumbTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
         detailPanel.addView(similarityBar, rowParams().apply { topMargin = dip(7) })
 
-        detach(offsetText)
-        styleText(offsetText, 14f, UiDesign.FOREGROUND, medium = true)
-        detailPanel.addView(offsetText, rowParams().apply { topMargin = dip(16) })
-        detach(offsetBar)
-        offsetBar.progressTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
-        offsetBar.thumbTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
-        detailPanel.addView(offsetBar, rowParams().apply { topMargin = dip(7) })
+        detailPanel.addView(
+            UiDesign.text(
+                this, "次の同期開始時に適用（＋はスマホ側を進める）", 12f, UiDesign.SECONDARY
+            ),
+            rowParams().apply { topMargin = dip(15) }
+        )
 
         listOf(headerText, microphoneText, matchText, timelineText, playerStatusText)
             .forEach { diagnostic ->
