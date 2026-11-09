@@ -235,6 +235,7 @@ class MainActivity : ComponentActivity() {
                     val active = player ?: return
                     if (!prepared) return
                     stopMicrophone()
+                    resetManualNudge()
                     try {
                         val target = active.duration.toLong() * progress / seekBar.max
                         active.seekTo(target.toInt())
@@ -423,7 +424,6 @@ class MainActivity : ComponentActivity() {
         timelineText.text = "推定時刻差：初回同期後に表示（再生中は自動シークしません）"
         prepared = false
         pendingAutoStart = false
-        resetManualNudge()
         nudgeBackButton.isEnabled = false
         nudgeForwardButton.isEnabled = false
         lastPlaybackEvent = "新しいファイルを準備しています。"
@@ -479,6 +479,7 @@ class MainActivity : ComponentActivity() {
             }
             next.setOnCompletionListener {
                 if (player === next) {
+                    resetManualNudge()
                     playButton.setText(R.string.play_audio)
                     lastPlaybackEvent = "曲の末尾まで再生しました。"
                     updatePlayerStatus()
@@ -486,6 +487,7 @@ class MainActivity : ComponentActivity() {
             }
             next.setOnErrorListener { _, what, extra ->
                 if (player === next) {
+                    resetManualNudge()
                     lastPlaybackEvent = "Media3再生エラー（code=$what）：${next.errorDetail}"
                     pendingAutoStart = false
                     updatePlayerStatus()
@@ -642,7 +644,8 @@ class MainActivity : ComponentActivity() {
         pendingAutoStart = false
         try {
             val active = player ?: return
-            if (active.isPlaying) {
+            if (active.playWhenReady) {
+                resetManualNudge()
                 cancelFadeIn()
                 active.pause()
                 playButton.setText(R.string.play_audio)
@@ -924,6 +927,7 @@ class MainActivity : ComponentActivity() {
         automatic: Boolean,
         statusMessage: String
     ) {
+        resetManualNudge()
         val generation = ++fadeInGeneration
         active.setVolume(0f)
         try {
@@ -1000,6 +1004,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         stopMicrophone()
+        resetManualNudge()
         pendingAutoStart = false
         try {
             if (player?.isPlaying == true) {
@@ -1014,6 +1019,7 @@ class MainActivity : ComponentActivity() {
         indexGeneration++
         uiHandler.removeCallbacks(progressUpdate)
         stopMicrophone()
+        resetManualNudge()
         prepared = false
         player?.release()
         player = null
