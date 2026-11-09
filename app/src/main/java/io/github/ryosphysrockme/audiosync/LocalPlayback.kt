@@ -86,6 +86,17 @@ internal class LocalPlayback(context: Context) {
     /** Linear playback gain: 0 = muted, 1 = full. Does not change device volume. */
     fun setVolume(gain: Float) { delegate.volume = gain.coerceIn(0f, 1f) }
 
+    /**
+     * Adjust playback speed while keeping audio pitch unchanged. The Media3
+     * audio pipeline may briefly buffer on some devices after a speed change.
+     */
+    fun setPlaybackSpeed(speed: Float) {
+        require(speed in 0.9f..1.1f)
+        delegate.setPlaybackSpeed(speed)
+    }
+
+    val playbackSpeed: Float get() = delegate.playbackParameters.speed
+
     fun prepareAsync() { delegate.prepare() }
     fun start() { delegate.play() }
     fun pause() { delegate.pause() }
