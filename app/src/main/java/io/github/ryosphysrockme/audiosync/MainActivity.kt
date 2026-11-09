@@ -295,7 +295,7 @@ class MainActivity : ComponentActivity() {
         }, fullWidth())
 
         offsetText = TextView(this).apply {
-            text = offsetLabel(0L)
+            text = offsetLabel(correctionOffsetMs)
             textSize = 15f
         }
         container.addView(offsetText, fullWidth())
