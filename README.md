@@ -43,6 +43,7 @@
 | --- | --- |
 | [機能一覧](docs/feature-inventory.md) | 実装済み機能、検証済みの範囲、将来候補 |
 | [動作仕様](docs/product-spec.md) | 利用手順、同期判定、初回シーク、フェードイン、手動補正、設定保存 |
+| [画面設計仕様](docs/screen-design-specification.md) | 用語、状態表示、同期・再生操作、設定、システムバー余白、受け入れ試験の定義 |
 | [画面デザイン方針](docs/ui-design-brief.md) | 表示優先度、主画面構成、操作性、プリセット方針 |
 | [実装方式](docs/architecture.md) | マイク入力、音響特徴量、位置推定、時間差と遅延 |
 | [検証計画](docs/test-plan.md) | 合成音源テスト、実機試験、測定すべき指標 |
