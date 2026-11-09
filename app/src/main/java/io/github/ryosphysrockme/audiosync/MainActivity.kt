@@ -2,6 +2,10 @@ package io.github.ryosphysrockme.audiosync
 
 import android.Manifest
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.text.TextUtils
+import android.view.Gravity
+import android.view.View
 import android.content.pm.PackageManager
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
@@ -17,6 +21,7 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
@@ -70,6 +75,7 @@ class MainActivity : ComponentActivity() {
     private var fadeInGeneration = 0L
     private var pendingAutoStart = false
     private var lastPlaybackEvent = "待機中"
+    private var lastSyncButtonActive: Boolean? = null
     private val manualNudge = ManualNudge()
     private var lastNudgeTickMs = 0L
     private var wasPlayingDuringPreviousTick = false
@@ -77,6 +83,13 @@ class MainActivity : ComponentActivity() {
     private var nudgeTickScheduled = false
 
     private lateinit var fileText: TextView
+    private lateinit var fileMetaText: TextView
+    private lateinit var syncStateText: TextView
+    private lateinit var playbackEndText: TextView
+    private lateinit var fileSelectButton: Button
+    private lateinit var similarityBar: SeekBar
+    private lateinit var offsetBar: SeekBar
+    private lateinit var nudgeRow: LinearLayout
     private lateinit var headerText: TextView
     private lateinit var playbackText: TextView
     private lateinit var microphoneText: TextView
@@ -125,8 +138,8 @@ class MainActivity : ComponentActivity() {
                                 active.duration.toLong()
                             ).toInt()
                     }
-                    playbackText.text = formatTime(active.currentPosition) +
-                        " / " + formatTime(active.duration)
+                    playbackText.text = formatTime(active.currentPosition)
+                    playbackEndText.text = formatTime(active.duration)
                     val canNudge = active.isPlaying && !pendingAutoStart
                     nudgeBackButton.isEnabled = canNudge
                     nudgeBackHundredButton.isEnabled = canNudge
@@ -137,6 +150,7 @@ class MainActivity : ComponentActivity() {
                     // Player can be released when a new reference is chosen.
                 }
             }
+            updateSyncState()
             uiHandler.postDelayed(this, 200L)
         }
     }
@@ -204,10 +218,11 @@ class MainActivity : ComponentActivity() {
             setPadding(0, 12, 0, 20)
         }, fullWidth())
 
-        container.addView(Button(this).apply {
+        fileSelectButton = Button(this).apply {
             setText(R.string.choose_audio)
             setOnClickListener { chooseAudioFile.launch(arrayOf("audio/*")) }
-        }, fullWidth())
+        }
+        container.addView(fileSelectButton, fullWidth())
 
         fileText = TextView(this).apply {
             setText(R.string.no_audio)
@@ -267,7 +282,7 @@ class MainActivity : ComponentActivity() {
 
         // Four equally weighted buttons, with the 100 ms controls outside
         // the original 50 ms controls. Short labels fit narrow phones.
-        val nudgeRow = LinearLayout(this).apply {
+        nudgeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
         nudgeBackHundredButton = Button(this).apply {
@@ -362,7 +377,7 @@ class MainActivity : ComponentActivity() {
         }
         container.addView(similarityText, fullWidth())
 
-        container.addView(SeekBar(this).apply {
+        similarityBar = SeekBar(this).apply {
             max = 45
             progress = (similarityThreshold * 100.0).roundToInt() - 50
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -378,7 +393,8 @@ class MainActivity : ComponentActivity() {
                         .apply()
                 }
             })
-        }, fullWidth())
+        }
+        container.addView(similarityBar, fullWidth())
 
         offsetText = TextView(this).apply {
             text = offsetLabel(correctionOffsetMs)
@@ -386,7 +402,7 @@ class MainActivity : ComponentActivity() {
         }
         container.addView(offsetText, fullWidth())
 
-        container.addView(SeekBar(this).apply {
+        offsetBar = SeekBar(this).apply {
             max = 120
             progress = 60 + (correctionOffsetMs / 10L).toInt()
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -402,9 +418,261 @@ class MainActivity : ComponentActivity() {
                         .putLong(HEADPHONE_OFFSET_KEY, correctionOffsetMs).apply()
                 }
             })
-        }, fullWidth())
+        }
+        container.addView(offsetBar, fullWidth())
 
         setContentView(ScrollView(this).apply { addView(container) })
+        installCompactScreen()
+    }
+
+    /**
+     * Reuses the original controls and listeners, but moves them into a
+     * sync-first dark layout. The player remains at the bottom, while the
+     * source and sync card scroll on smaller / rotated displays.
+     *
+     * All diagnostic TextViews remain live, but are collapsed by default.
+     */
+    private fun installCompactScreen() {
+        fun dip(value: Int): Int = UiDesign.dp(this, value)
+        fun detach(view: View) {
+            (view.parent as? ViewGroup)?.removeView(view)
+        }
+        fun styleText(view: TextView, size: Float, color: Int, medium: Boolean = false) {
+            view.textSize = size
+            view.setTextColor(color)
+            view.includeFontPadding = false
+            if (medium) view.typeface =
+                android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+        }
+        fun rowParams(height: Int = ViewGroup.LayoutParams.WRAP_CONTENT) =
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height)
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(UiDesign.BACKGROUND)
+        }
+        val main = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dip(18), dip(18), dip(18), dip(16))
+        }
+        val scroll = ScrollView(this).apply {
+            clipToPadding = false
+            isFillViewport = false
+            addView(main)
+        }
+        root.addView(
+            scroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
+
+        // Header: no redundant section names.
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        toolbar.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_launcher_foreground)
+            contentDescription = null
+        }, LinearLayout.LayoutParams(dip(38), dip(38)))
+        toolbar.addView(
+            UiDesign.text(this, "音声同期プレーヤー", 19f, medium = true),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dip(7)
+            }
+        )
+        main.addView(toolbar, rowParams())
+
+        // File card: filename + current load state + a compact change action.
+        val fileCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 17, true)
+            setPadding(dip(14), dip(13), dip(12), dip(13))
+        }
+        val fileContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        detach(fileText)
+        styleText(fileText, 15f, UiDesign.FOREGROUND, medium = true)
+        fileText.maxLines = 1
+        fileText.ellipsize = TextUtils.TruncateAt.END
+        fileContent.addView(fileText, rowParams())
+
+        fileMetaText = UiDesign.text(this, "ファイル未選択", 12f, UiDesign.SECONDARY).apply {
+            setPadding(0, dip(5), 0, 0)
+        }
+        fileContent.addView(fileMetaText, rowParams())
+        fileCard.addView(fileContent, LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { marginEnd = dip(8) })
+
+        detach(fileSelectButton)
+        fileSelectButton.text = "変更"
+        UiDesign.button(
+            fileSelectButton,
+            UiDesign.rounded(this, UiDesign.SURFACE_STRONG, 12),
+            UiDesign.FOREGROUND,
+            13f
+        )
+        fileCard.addView(fileSelectButton, LinearLayout.LayoutParams(dip(70), dip(43)))
+        main.addView(fileCard, rowParams().apply { topMargin = dip(18) })
+
+        // The large sync button is the only primary action.
+        val syncCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 23, true)
+            setPadding(dip(16), dip(25), dip(16), dip(23))
+        }
+        syncStateText = UiDesign.text(
+            this, "音源を選択してください", 17f, UiDesign.SECONDARY, medium = true
+        ).apply { gravity = Gravity.CENTER }
+        syncCard.addView(syncStateText, rowParams())
+
+        detach(microphoneButton)
+        UiDesign.button(
+            microphoneButton,
+            UiDesign.primary(this),
+            UiDesign.FOREGROUND,
+            20f
+        )
+        syncCard.addView(microphoneButton, rowParams(dip(66)).apply {
+            topMargin = dip(19)
+        })
+        main.addView(syncCard, rowParams().apply { topMargin = dip(18) })
+
+        // Keep parameters and diagnostics available without consuming the
+        // main player's space during routine listening.
+        val detailPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            background = UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 17, true)
+            setPadding(dip(16), dip(18), dip(16), dip(18))
+        }
+        val detailsToggle = Button(this).apply {
+            text = "詳細設定・診断  ▾"
+            UiDesign.button(
+                this, UiDesign.rounded(this@MainActivity, UiDesign.SURFACE_RAISED, 13),
+                UiDesign.SECONDARY, 14f
+            )
+            setOnClickListener {
+                val expanded = detailPanel.visibility != View.VISIBLE
+                detailPanel.visibility = if (expanded) View.VISIBLE else View.GONE
+                text = if (expanded) "詳細設定・診断  ▴" else "詳細設定・診断  ▾"
+            }
+        }
+        main.addView(detailsToggle, rowParams(dip(44)).apply { topMargin = dip(16) })
+
+        detach(similarityText)
+        styleText(similarityText, 14f, UiDesign.FOREGROUND, medium = true)
+        detailPanel.addView(similarityText, rowParams())
+        detach(similarityBar)
+        similarityBar.progressTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
+        similarityBar.thumbTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
+        detailPanel.addView(similarityBar, rowParams().apply { topMargin = dip(7) })
+
+        detach(offsetText)
+        styleText(offsetText, 14f, UiDesign.FOREGROUND, medium = true)
+        detailPanel.addView(offsetText, rowParams().apply { topMargin = dip(16) })
+        detach(offsetBar)
+        offsetBar.progressTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
+        offsetBar.thumbTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
+        detailPanel.addView(offsetBar, rowParams().apply { topMargin = dip(7) })
+
+        listOf(headerText, microphoneText, matchText, timelineText, playerStatusText)
+            .forEach { diagnostic ->
+                detach(diagnostic)
+                styleText(diagnostic, 12f, UiDesign.SECONDARY)
+                detailPanel.addView(diagnostic, rowParams().apply { topMargin = dip(12) })
+            }
+        main.addView(detailPanel, rowParams().apply { topMargin = dip(7) })
+
+        // The lower player is separate and remains within reach while the
+        // user expands diagnostics above or rotates the device.
+        val bottomShell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(UiDesign.BACKGROUND)
+            setPadding(dip(12), dip(6), dip(12), dip(12))
+        }
+        val playerCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 20, true)
+            setPadding(dip(13), dip(13), dip(13), dip(13))
+        }
+        val timeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        detach(playbackText)
+        playbackText.text = "00:00"
+        styleText(playbackText, 12f, UiDesign.SECONDARY)
+        playbackEndText = UiDesign.text(this, "00:00", 12f, UiDesign.SECONDARY).apply {
+            gravity = Gravity.END
+        }
+        timeRow.addView(playbackText, LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ))
+        timeRow.addView(playbackEndText, LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ))
+        playerCard.addView(timeRow, rowParams())
+
+        detach(seekBar)
+        seekBar.progressTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
+        seekBar.progressBackgroundTintList = ColorStateList.valueOf(UiDesign.OUTLINE)
+        seekBar.thumbTintList = ColorStateList.valueOf(UiDesign.PRIMARY)
+        playerCard.addView(seekBar, rowParams().apply { topMargin = dip(2) })
+
+        detach(nudgeRow)
+        val adjustments = listOf(
+            nudgeBackHundredButton, nudgeBackButton,
+            nudgeForwardButton, nudgeForwardHundredButton
+        )
+        val buttonLabels = listOf("−100", "−50", "+50", "+100")
+        adjustments.forEachIndexed { index, button ->
+            button.text = buttonLabels[index]
+            UiDesign.button(
+                button,
+                UiDesign.rounded(this, UiDesign.SURFACE_STRONG, 12),
+                UiDesign.FOREGROUND,
+                13f
+            )
+            button.contentDescription = when (index) {
+                0 -> "100ミリ秒遅らせる"
+                1 -> "50ミリ秒遅らせる"
+                2 -> "50ミリ秒進める"
+                else -> "100ミリ秒進める"
+            }
+            (button.layoutParams as? LinearLayout.LayoutParams)?.apply {
+                height = dip(45)
+                marginStart = if (index == 0) 0 else dip(6)
+            }
+        }
+        playerCard.addView(nudgeRow, rowParams().apply { topMargin = dip(7) })
+
+        detach(nudgeStatusText)
+        styleText(nudgeStatusText, 15f, UiDesign.PRIMARY, medium = true)
+        nudgeStatusText.text = "補正 +0 ms"
+        nudgeStatusText.gravity = Gravity.CENTER
+        nudgeStatusText.setPadding(0, dip(11), 0, dip(5))
+        playerCard.addView(nudgeStatusText, rowParams())
+
+        detach(playButton)
+        UiDesign.button(
+            playButton,
+            UiDesign.rounded(this, UiDesign.SURFACE_RAISED, 22, true),
+            UiDesign.FOREGROUND,
+            14f
+        )
+        val playRow = LinearLayout(this).apply { gravity = Gravity.CENTER }
+        playRow.addView(playButton, LinearLayout.LayoutParams(dip(132), dip(43)))
+        playerCard.addView(playRow, rowParams().apply { topMargin = dip(9) })
+        bottomShell.addView(playerCard, rowParams())
+        root.addView(bottomShell, rowParams())
+
+        setContentView(root)
+        updateSyncState()
     }
 
     private fun fullWidth(): LinearLayout.LayoutParams =
@@ -431,6 +699,49 @@ class MainActivity : ComponentActivity() {
         ("再生開始の一致度閾値：%.2f（低いほど開始しやすい）\n" +
             "他候補との差0.075以上・2回連続確認は固定")
                 .format(Locale.JAPAN, threshold)
+
+    /**
+     * Primary status is intentionally concise. Playback control and detailed
+     * diagnostics are independent from microphone synchronization.
+     */
+    private fun updateSyncState() {
+        if (!::syncStateText.isInitialized || !::microphoneButton.isInitialized) return
+        val active = player
+        val label = when {
+            selectedAudioUri == null -> "音源を選択してください"
+            captureRunning && initialAlignment.phase == InitialAlignmentPolicy.Phase.PLAYING &&
+                active?.playWhenReady == true -> "同期して再生中"
+            captureRunning && pendingAutoStart -> "再生を準備中"
+            captureRunning -> "外部音声を認識中"
+            active?.playWhenReady == true -> "再生中"
+            !prepared || reference == null -> "音源を準備中"
+            else -> "同期待機中"
+        }
+        syncStateText.text = label
+        syncStateText.setTextColor(
+            if (captureRunning && initialAlignment.phase == InitialAlignmentPolicy.Phase.PLAYING) {
+                UiDesign.SUCCESS
+            } else if (captureRunning) {
+                UiDesign.PRIMARY
+            } else {
+                UiDesign.SECONDARY
+            }
+        )
+        if (lastSyncButtonActive != captureRunning) {
+            lastSyncButtonActive = captureRunning
+            microphoneButton.setText(
+                if (captureRunning) R.string.stop_microphone else R.string.start_microphone
+            )
+            UiDesign.button(
+                microphoneButton,
+                if (captureRunning) UiDesign.rounded(
+                    this, UiDesign.SURFACE_STRONG, 19, true
+                ) else UiDesign.primary(this),
+                UiDesign.FOREGROUND,
+                if (captureRunning) 18f else 20f
+            )
+        }
+    }
 
     private fun offsetLabel(offsetMs: Long): String =
         "次の初回同期位置の補正：%+d ms（＋はスマホ側を先に進める）"
@@ -462,6 +773,7 @@ class MainActivity : ComponentActivity() {
         player = null
 
         fileText.text = displayName(uri)
+        fileMetaText.text = "解析中"
         headerText.text = "音声形式：ヘッダーを調べています"
         Thread({
             val report = AudioHeaderInspector.inspect(applicationContext.contentResolver, uri)
@@ -523,6 +835,7 @@ class MainActivity : ComponentActivity() {
                     microphoneButton.isEnabled = false
                     seekBar.isEnabled = false
                     playbackText.setText(R.string.file_error)
+                    fileMetaText.text = "再生の準備に失敗"
                 }
                 true
             }
@@ -532,6 +845,7 @@ class MainActivity : ComponentActivity() {
             next.release()
             player = null
             playbackText.setText(R.string.file_error)
+            fileMetaText.text = "再生の準備に失敗"
             lastPlaybackEvent = "読み込み処理で例外が発生：${error.javaClass.simpleName} / " +
                 (error.localizedMessage ?: "詳細なし")
             updatePlayerStatus()
@@ -550,6 +864,11 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (token == indexGeneration && !isFinishing && !isDestroyed) {
                         reference = indexed
+                        fileMetaText.text = if (indexWarnings.isEmpty()) {
+                            "解析完了"
+                        } else {
+                            "解析完了・警告あり"
+                        }
                         microphoneButton.isEnabled = prepared && microphoneRecorder == null
                         matchText.text = "解析完了（%dフレーム）。マイクを開始してください。"
                             .format(Locale.JAPAN, indexed.size) +
@@ -567,6 +886,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (token == indexGeneration && !isFinishing && !isDestroyed) {
                         reference = null
+                        fileMetaText.text = "解析に失敗"
                         microphoneButton.isEnabled = false
                         matchText.text = "解析できませんでした：" +
                             (error.localizedMessage ?: error.javaClass.simpleName)
@@ -602,10 +922,12 @@ class MainActivity : ComponentActivity() {
             updateManualNudge(active)
             val accepted = manualNudge.request(deltaMs)
             if (accepted == 0L) {
-                nudgeStatusText.text = "未完了の補正が上限（±500 ms）に達しています。"
                 return
             }
             updateManualNudge(active)
+            nudgeStatusText.text = "補正 %+d ms".format(
+                Locale.JAPAN, manualNudge.requestedTotalMs
+            )
             lastPlaybackEvent = "手動で時間差%+d msの速度補正を要求。音源はシークしません。"
                 .format(Locale.JAPAN, accepted)
             updatePlayerStatus()
@@ -627,16 +949,6 @@ class MainActivity : ComponentActivity() {
         if (kotlin.math.abs(speed - appliedNudgeSpeed) > 0.0001f) {
             active.setPlaybackSpeed(speed)
             appliedNudgeSpeed = speed
-        }
-        nudgeStatusText.text = if (manualNudge.active) {
-            "速度補正中：%.2f倍、未完了 %+,.0f ms、要求累計 %+d ms".format(
-                Locale.JAPAN, speed, manualNudge.remainingCorrectionMs,
-                manualNudge.requestedTotalMs
-            )
-        } else {
-            "補正終了：1.00倍（要求累計 %+d ms）".format(
-                Locale.JAPAN, manualNudge.requestedTotalMs
-            )
         }
     }
 
@@ -661,7 +973,7 @@ class MainActivity : ComponentActivity() {
             // Player may already be released.
         }
         if (::nudgeStatusText.isInitialized) {
-            nudgeStatusText.text = "再生中の時間補正：左＝遅らせる、右＝進める（現在1.00倍）"
+            nudgeStatusText.text = "補正 +0 ms"
         }
     }
 
