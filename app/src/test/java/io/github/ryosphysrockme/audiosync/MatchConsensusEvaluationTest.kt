@@ -37,6 +37,24 @@ class MatchConsensusEvaluationTest {
     }
 
     @Test
+    fun diagnosticReasonUsesCurrentSliderThreshold() {
+        val gate = MatchConsensus()
+        val blocked = gate.evaluate(
+            candidate(8_000L, score = 0.80, confident = false),
+            capturedAtMs = 1_000L,
+            similarityThreshold = 0.85
+        )
+        assertEquals(MatchConsensus.Status.LOW_SIMILARITY, blocked.status)
+
+        val ambiguous = gate.evaluate(
+            candidate(8_000L, score = 0.80, margin = 0.02, confident = false),
+            capturedAtMs = 2_000L,
+            similarityThreshold = 0.60
+        )
+        assertEquals(MatchConsensus.Status.AMBIGUOUS, ambiguous.status)
+    }
+
+    @Test
     fun showsConfirmationThenAcceptanceThenTracking() {
         val gate = MatchConsensus()
         val first = gate.evaluate(candidate(7_000), 1_000)

@@ -36,11 +36,11 @@ Recognizing a song and locating its position is only the first part. The listene
 
 - **Reference preprocessing:** a direct streaming PCM16 WAV parser for RIFF/WAVE files; for other formats, Android `MediaExtractor` and `MediaCodec`. Both compute mono spectral features at 16 kHz.
 - **Features:** a self-contained, streaming Kotlin implementation of Hann-windowed spectral features (2048-point Fourier transform, 512-sample hop, 16 frequency bands).
-- **Recognition:** the last 96 feature frames (about 3 seconds) are compared against the whole reference using a coarse-to-fine search. Insufficient or ambiguous matches are rejected.
+- **Recognition:** the last 96 feature frames (about 3 seconds) are compared against the whole reference using a coarse-to-fine search. The minimum similarity is user-adjustable (0.50–0.95, default 0.72); ambiguous matches remain rejected via an independent fixed margin and two-observation confirmation.
 - **Continuity check:** two strong, temporally consistent observations are required before the initial automatic seek. Repeated or ambiguous candidates are still rejected.
 - **Playback (v0.2.5-dev):** Media3 ExoPlayer seeks once on initial lock. While the microphone continues matching, no further automatic seeks, pauses, or playback-speed changes are issued. To retry an initial alignment, stop and start the microphone again.
 - **Diagnostics:** while tracking, the app shows the median of recent estimated media-time differences (external minus local), their change since the first accepted post-start observation, and the sample count. They are **not measurements of physical audio output latency**.
-- **Calibration:** a manual offset control allows −600 to +600 ms in 10 ms steps and affects the next initial alignment only. Positive values advance the local position.
+- **Calibration:** a saved manual offset control allows −600 to +600 ms in 10 ms steps and affects the next initial alignment only. Positive values advance the local position. Playback begins with a 600 ms fade-in.
 - **Privacy:** microphone audio is processed on-device; recordings are not stored or uploaded by the app.
 
 **Not yet implemented:** sample-accurate output compensation, automatic Bluetooth latency measurement, playback-speed drift control, automatic reacquisition after an external seek (the mic needs to be restarted), and alignment of karaoke instrumental versions to the vocal recording.
@@ -146,6 +146,22 @@ The direct WAV indexer now processes all **complete interleaved PCM frames** ava
 - A file too short for useful matching is still rejected. Damaged or truncated audio is **not silently declared healthy**.
 
 This addresses feature indexing, not playback, which continues using Media3 ExoPlayer. Automatic playback still performs only the first initial seek per microphone session. Real-device validation remains necessary.
+
+## Playback sensitivity, fade-in and manual headphone offset (v0.2.7-dev)
+
+Once the phone can load and recognize the same recording, the two adjustable controls address different stages:
+
+- **再生開始の一致度閾値** is a similarity-score threshold from **0.50 to 0.95**, in steps of 0.01; the default remains **0.72**. Decreasing it may make the first match easier, at the risk of false starts. Increasing it rejects weaker matches. The separate **0.075 runner-up margin** and **two consecutive temporally consistent matches** are always required, so the slider does not disable safeguards for repeated choruses. Settings take effect on the next microphone matching window, even while listening.
+- **次の初回同期位置の補正** is the existing headphone timing offset from **−600 to +600 ms** in 10 ms steps. A positive number seeks the local recording ahead on the next initial synchronization. Changing it after playback begins does **not** jump the song or correct that playback session.
+- Both slider values are retained in the app's private settings across normal restarts and display rotation. Uninstalling the app clears them.
+
+Automatic starts and manual Play/Resume now use a **600 ms smooth fade-in** of player volume: initially silent, progressively reaching normal level. The operation does not alter media position or playback rate; only audio gain changes. If play is cancelled, the volume returns to normal to prevent a player remaining muted.
+
+**Limitations:** these settings do not measure or automatically compensate for Bluetooth headphone latency. The app continues the *one initial seek per microphone listening session* behavior to avoid audible oscillating re-seeks. There are no continuous automatic adjustments after initial lock.
+
+### MP3 and M4A compatibility
+
+Media3 playback supports commonly used MP3 and M4A containers, subject to codec/device support. However, the *reference-feature indexing* pipeline still uses Android `MediaExtractor` / `MediaCodec` for non-WAV formats and has not been validated on real MP3/M4A recordings. Thus the current build must **not** be advertised as fully supporting automatic synchronization for those formats. Separate format-by-format device tests should come after validating the waveform and user controls with known-working WAV recordings.
 
 ## Development status and build instructions
 

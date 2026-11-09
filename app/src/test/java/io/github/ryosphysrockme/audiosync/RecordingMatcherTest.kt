@@ -56,6 +56,37 @@ class RecordingMatcherTest {
     }
 
     @Test
+    fun similarityThresholdIsAdjustableWithoutDisablingAmbiguityCheck() {
+        val source = track()
+        val reference = features(source)
+        val noise = Random(72)
+        val start = 8 * sr
+        val mic = FloatArray(sr * 5) { i ->
+            (source[start + i] * 0.63f +
+                0.025f * (noise.nextDouble() - 0.5)).toFloat()
+        }
+        val live = features(mic).takeLast(96)
+        val matcher = RecordingMatcher(reference)
+        val baseline = matcher.match(live)
+        assertNotNull(baseline)
+        assertTrue(baseline!!.confident)
+        val relaxed = matcher.match(live, similarityThreshold = (baseline.score - 0.01).coerceAtLeast(0.0))
+        val strict = matcher.match(live, similarityThreshold = (baseline.score + 0.01).coerceAtMost(1.0))
+        assertTrue(relaxed!!.confident)
+        assertFalse(strict!!.confident)
+
+        // A repeated passage is still rejected even at a very lenient
+        // similarity threshold because the runner-up ambiguity margin is fixed.
+        val repeated = track(12)
+        val ambiguous = RecordingMatcher(features(repeated + repeated)).match(
+            features(repeated.copyOfRange(2 * sr, 7 * sr)).takeLast(96),
+            similarityThreshold = 0.50
+        )
+        assertNotNull(ambiguous)
+        assertFalse(ambiguous!!.confident)
+    }
+
+    @Test
     fun matchesAnExcerptWithAnEchoAndFractionalStartTime() {
         val source = track(26)
         val reference = features(source)

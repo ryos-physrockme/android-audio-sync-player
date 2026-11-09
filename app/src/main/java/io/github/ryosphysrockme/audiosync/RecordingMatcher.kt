@@ -16,6 +16,11 @@ internal class RecordingMatcher(
     private val reference: List<SpectralFeatures.Frame>,
     private val windowSize: Int = 96
 ) {
+    companion object {
+        const val DEFAULT_SIMILARITY_THRESHOLD = 0.72
+        const val MINIMUM_ALTERNATIVE_MARGIN = 0.075
+    }
+
     data class Result(
         /** Position of the LAST matched microphone feature in the reference. */
         val referencePositionMs: Long,
@@ -29,7 +34,11 @@ internal class RecordingMatcher(
         require(windowSize >= 32 && windowSize % 4 == 0)
     }
 
-    fun match(live: List<SpectralFeatures.Frame>): Result? {
+    fun match(
+        live: List<SpectralFeatures.Frame>,
+        similarityThreshold: Double = DEFAULT_SIMILARITY_THRESHOLD
+    ): Result? {
+        require(similarityThreshold in 0.0..1.0)
         if (live.size != windowSize || reference.size < windowSize) return null
         val validMicFrames = live.count { it.valid }
         if (validMicFrames < windowSize * 0.65) return null
@@ -96,7 +105,7 @@ internal class RecordingMatcher(
         val centerSample = reference[bestIndex + windowSize - 1].centerSample
 
         // Conservative initial criteria; not yet tuned with room recordings.
-        val confident = bestScore >= 0.72 && margin >= 0.075
+        val confident = bestScore >= similarityThreshold && margin >= MINIMUM_ALTERNATIVE_MARGIN
         return Result(
             referencePositionMs = centerSample * 1000L / SpectralFeatures.SAMPLE_RATE,
             score = bestScore,
@@ -170,7 +179,8 @@ internal class MatchConsensus {
      */
     fun evaluate(
         result: RecordingMatcher.Result?,
-        capturedAtMs: Long
+        capturedAtMs: Long,
+        similarityThreshold: Double = RecordingMatcher.DEFAULT_SIMILARITY_THRESHOLD
     ): Evaluation {
         if (result == null) {
             pending = null
@@ -179,7 +189,7 @@ internal class MatchConsensus {
         if (!result.confident) {
             pending = null
             return Evaluation(
-                if (result.score < 0.72) Status.LOW_SIMILARITY else Status.AMBIGUOUS
+                if (result.score < similarityThreshold) Status.LOW_SIMILARITY else Status.AMBIGUOUS
             )
         }
 

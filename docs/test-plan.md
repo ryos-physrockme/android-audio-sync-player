@@ -31,6 +31,20 @@ The synthetic parser tests cover four distinct cases: a correct finite `data` si
 
 With a real recording, verify that the app displays `解析完了` and permits microphone monitoring. For inconsistent lengths, the UI must also report the declared length (if known) and the count actually read. Successful indexing does **not** demonstrate that a damaged file has no missing tail.
 
+## Adjustable matching threshold and playback fade-in (v0.2.7-dev)
+
+Acceptance tests for the new UI:
+
+- With the threshold at 0.72, first-lock recognition should be comparable to the previous build.
+- Lowering the threshold to 0.60 can permit weaker matches, **but may lead to false lock**; the fixed runner-up margin of 0.075 and the second consistent match must remain active.
+- Setting a high threshold (e.g. 0.90) should visibly cause `再生保留：一致度が不足しています` when matches are below the selected score.
+- Confirm that changing the threshold during microphone listening changes matching decisions on subsequent windows, without restarting or jumping the already-playing reference.
+- Confirm that automatic start and manual playback each begin audibly at low gain and rise to normal volume in about 600 ms. Verify that pausing/switching files does not leave the player muted.
+- Confirm offset and threshold settings persist through normal rotation and application restarts, but changing the headphone offset does not seek during active playback.
+- Record any unusual behavior with Bluetooth: fading the *player* gain is independent from device/system volume and from headset latency.
+
+MP3 and M4A are not yet validated end-to-end; test those separately with licensed reference recordings once the WAV baseline remains stable.
+
 ## What to measure
 
 The goal is not just a correct track label. It is the difference between the acoustic signal heard from the external source and the locally played reference at the listener.
