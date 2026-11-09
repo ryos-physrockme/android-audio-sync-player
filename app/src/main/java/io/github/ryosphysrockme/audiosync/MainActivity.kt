@@ -42,6 +42,11 @@ import kotlin.math.sqrt
  * This prototype does not yet guarantee acoustic output alignment.
  */
 class MainActivity : ComponentActivity() {
+    companion object {
+        private const val SELECTED_AUDIO_URI_STATE = "selected_audio_uri"
+    }
+
+    private var selectedAudioUri: Uri? = null
     private var player: MediaPlayer? = null
     private var prepared = false
     private var reference: List<SpectralFeatures.Frame>? = null
@@ -119,6 +124,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         buildScreen()
         uiHandler.post(progressUpdate)
+
+        // Preserve the user's file selection if Android recreates the Activity
+        // for a configuration change we do not explicitly handle.
+        savedInstanceState?.getString(SELECTED_AUDIO_URI_STATE)?.let { encoded ->
+            loadAudioFile(Uri.parse(encoded))
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        selectedAudioUri?.let { outState.putString(SELECTED_AUDIO_URI_STATE, it.toString()) }
+        super.onSaveInstanceState(outState)
     }
 
     private fun buildScreen() {
@@ -273,6 +289,7 @@ class MainActivity : ComponentActivity() {
             .format(Locale.JAPAN, offsetMs)
 
     private fun loadAudioFile(uri: Uri) {
+        selectedAudioUri = uri
         stopMicrophone()
         val token = ++indexGeneration
         reference = null
