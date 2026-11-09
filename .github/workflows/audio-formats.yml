@@ -1,10 +1,15 @@
-name: Android compressed-audio smoke tests
+name: Android emulator smoke tests
 
 on:
   pull_request:
     paths:
       - 'app/src/main/java/io/github/ryosphysrockme/audiosync/ReferenceDecoder.kt'
       - 'app/src/main/java/io/github/ryosphysrockme/audiosync/ExtractorSource.kt'
+      - 'app/src/main/java/io/github/ryosphysrockme/audiosync/MainActivity.kt'
+      - 'app/src/main/java/io/github/ryosphysrockme/audiosync/UiDesign.kt'
+      - 'app/src/main/res/**'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/build.gradle.kts'
       - 'app/src/androidTest/**'
       - 'scripts/generate-audio-format-fixtures.sh'
       - '.github/workflows/audio-formats.yml'
@@ -35,7 +40,7 @@ jobs:
       - name: Allow hardware acceleration when available
         run: |
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-      - name: Android emulator format tests
+      - name: Android emulator playback and UI tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
