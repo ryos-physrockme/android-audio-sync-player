@@ -13,7 +13,10 @@ internal class ManualNudge(
     private val speedOffset: Float = 0.05f,
     private val maxPendingMs: Double = 500.0
 ) {
-    companion object { const val STEP_MS = 50L }
+    companion object {
+        const val STEP_MS = 50L
+        const val LARGE_STEP_MS = 100L
+    }
 
     init {
         require(speedOffset > 0f && speedOffset < 1f)
