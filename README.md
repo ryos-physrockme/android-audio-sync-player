@@ -14,7 +14,7 @@ The intended workflow is:
 2. Tap **Listen / Sync** and allow microphone access.
 3. Start playback on the external device (or join while it is already playing).
 4. The app estimates the external playback position and starts/seeks the local player to the corresponding position.
-5. While playing, it corrects drift without frequent audible jumps. A manual timing-offset control compensates for headphone and device latency.
+5. In the initial-seek-only experiment (v0.2.3-dev), subsequent microphone matches **only display estimated timeline differences** and never automatically seek, pause, or alter playback speed. A manual offset control changes the next initial alignment position.
 
 The target is **acoustic synchronization**, not clock synchronization between two cooperating players. No network connection or modification to the external playback device should be required.
 
@@ -37,12 +37,13 @@ Recognizing a song and locating its position is only the first part. The listene
 - **Reference preprocessing:** Android `MediaExtractor` and `MediaCodec` decode the selected local file, downmix to mono and linearly resample it to 16 kHz.
 - **Features:** a self-contained, streaming Kotlin implementation of Hann-windowed spectral features (2048-point Fourier transform, 512-sample hop, 16 frequency bands).
 - **Recognition:** the last 96 feature frames (about 3 seconds) are compared against the whole reference using a coarse-to-fine search. Insufficient or ambiguous matches are rejected.
-- **Continuity check:** two strong, temporally consistent observations are required before starting/repositioning playback. An interrupted reference can be reacquired.
-- **Playback:** Android `MediaPlayer` can automatically seek/start and periodically correct large estimated timing errors, subject to conservative rate limits.
-- **Calibration:** a manual offset control allows −600 to +600 ms in 10 ms steps. Positive values advance the local audio position.
+- **Continuity check:** two strong, temporally consistent observations are required before the initial automatic seek. Repeated or ambiguous candidates are still rejected.
+- **Playback (v0.2.3-dev):** Android `MediaPlayer` seeks once on initial lock. While the microphone continues matching, no further automatic seeks, pauses, or playback-speed changes are issued. To retry an initial alignment, stop and start the microphone again.
+- **Diagnostics:** while tracking, the app shows the median of recent estimated media-time differences (external minus local), their change since the first accepted post-start observation, and the sample count. They are **not measurements of physical audio output latency**.
+- **Calibration:** a manual offset control allows −600 to +600 ms in 10 ms steps and affects the next initial alignment only. Positive values advance the local position.
 - **Privacy:** microphone audio is processed on-device; recordings are not stored or uploaded by the app.
 
-**Not yet implemented:** sample-accurate output compensation, automatic Bluetooth latency measurement, playback-speed drift control, automatic correction for changing song tempo, and alignment of karaoke instrumental versions to the vocal recording.
+**Not yet implemented:** sample-accurate output compensation, automatic Bluetooth latency measurement, playback-speed drift control, automatic reacquisition after an external seek (the mic needs to be restarted), and alignment of karaoke instrumental versions to the vocal recording.
 
 The matching code is original Kotlin code. [Olaf](https://github.com/JorenSix/Olaf) remains a reference, **not a dependency**. Its AGPL-3.0 license and patent notices must be considered before any integration.
 
@@ -113,6 +114,18 @@ The committed Android screen supports:
 - Pausing microphone capture when the app is no longer in the foreground.
 
 **This is an experimental synchronizer, not yet verified by physical measurements.** Spectral matching and software playback positions are not proof of audio reaching a listener at the correct time. Room acoustics, codec delays, audio route changes and repeated musical passages may cause errors. Begin tests with a wired headset and the identical local recording played by a separate speaker.
+
+### One-seek trial (v0.2.3-dev)
+
+1. Select the same local recording that an external speaker will play; allow indexing to finish.
+2. Connect headphones and tap **マイクを開始**. Do not manually start the phone's player.
+3. Start the external speaker, including from partway into the recording if desired. After a confirmed match, the phone should seek to the estimated position and play.
+4. Continue listening without touching the controls. The phone should no longer jump forward/backward due to estimated error; watch the estimated offset and its change on screen.
+5. To try another initial lock, **stop and restart the microphone**. The current app cannot automatically follow an external pause/seek in this mode.
+
+The estimated difference displayed on the phone is derived from a microphone-based position estimate and MediaPlayer's software playback position. It does not measure acoustic sound at your ears. A constant difference may reflect device latency or feature estimation bias. Record separately whether the audible sync sounds steady, late, or early.
+
+**Update installation:** GitHub Actions debug builds may be signed using different temporary debug keys. If Android refuses an in-place upgrade, the old debug app may need to be uninstalled before installing the new APK. Do not share or commit a production signing key.
 
 Build prerequisites: Android Studio, Android SDK API 36, Java 17, Gradle 8.13 and a compatible Android Gradle Plugin/Kotlin toolchain (versions are pinned in the Gradle build files). Open the project root in Android Studio, then run the `app` configuration on an Android device with a microphone. The minimum Android API level is 26.
 
