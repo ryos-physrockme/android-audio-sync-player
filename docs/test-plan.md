@@ -56,6 +56,14 @@ Test with the same WAV recording playing externally and locally, after the autom
 - Verify that manual nudging does not re-enable the old automatic seeking loop. The microphone may still show new timeline errors because the player has been moved.
 - Record any audible click, repeated fragment or buffering glitch. Millisecond seek targets do not guarantee millisecond acoustic accuracy.
 
+## MP3/M4A local decoding checks (v0.2.9-dev)
+
+- An Android emulator smoke test uses synthetic 8-second audio encoded as 192 kbps CBR MP3, variable-bitrate MP3 and AAC-LC in M4A. Fixtures are produced by `scripts/generate-audio-format-fixtures.sh` with FFmpeg and not committed.
+- Each instrumented test must index more than 96 usable spectral frames and prepare Media3 ExoPlayer without a loading error.
+- A separate *physical* experiment remains necessary for the microphone to follow externally played MP3 and M4A. Different encoders may add silent leading samples and timing offsets.
+- Keep the WAV baseline and manual ±50 ms adjustment available; do not disable the independent ambiguity check to force compressed files to match.
+- Record format metadata, audio duration, device, codec errors and whether the sync position deviates systematically from WAV of the same original recording.
+
 ## What to measure
 
 The goal is not just a correct track label. It is the difference between the acoustic signal heard from the external source and the locally played reference at the listener.
