@@ -107,9 +107,55 @@ class WavPcmIndexerTest {
         assertTrue(frames != null && frames.size >= 96)
     }
 
-    @Test(expected = java.io.IOException::class)
-    fun truncatedPcmFileIsNotSilentlyAccepted() {
+    @Test
+    fun unknownDataChunkLengthCanBeIndexedToPhysicalEof() {
+        val wav = generatedWav(seconds = 5)
+        // A streamed WAV commonly uses an unspecified 0xFFFFFFFF data length.
+        putDataSize(wav, 0xffff_ffffL)
+        val warnings = mutableListOf<String>()
+        val frames = WavPcmIndexer.indexPcm16(
+            ByteArrayInputStream(wav),
+            onWarning = { warnings.add(it) }
+        )
+        assertTrue(frames != null && frames.size > 96)
+        assertTrue(warnings.any { it.contains("0xFFFFFFFF") })
+    }
+
+    @Test
+    fun overstatedDataChunkLengthUsesCompletePcmFramesWithWarning() {
+        val wav = generatedWav(seconds = 5)
+        val declaredBytes = (wav.size - 44 + 300_000).toLong()
+        putDataSize(wav, declaredBytes)
+        val warnings = mutableListOf<String>()
+        val frames = WavPcmIndexer.indexPcm16(
+            ByteArrayInputStream(wav),
+            onWarning = { warnings.add(it) }
+        )
+        assertTrue(frames != null && frames.size > 96)
+        assertTrue(warnings.any { it.contains("一致しません") })
+        assertTrue(warnings.any { it.contains(declaredBytes.toString().take(2)) })
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun truncatedPcmTooShortToMatchIsRejected() {
         val wav = generatedWav(seconds = 4)
+        // The available data is about two seconds: shorter than 96 frames.
         WavPcmIndexer.indexPcm16(ByteArrayInputStream(wav.copyOf(wav.size / 2)))
+    }
+
+    @Test
+    fun completeWavDoesNotProduceSizeWarning() {
+        val warnings = mutableListOf<String>()
+        val frames = WavPcmIndexer.indexPcm16(
+            ByteArrayInputStream(generatedWav(seconds = 5)),
+            onWarning = { warnings.add(it) }
+        )
+        assertTrue(frames != null && frames.size > 96)
+        assertTrue(warnings.isEmpty())
+    }
+
+    private fun putDataSize(data: ByteArray, value: Long) {
+        // In generatedWav(withMetadata=false), 'data' starts at byte 36.
+        for (i in 0..3) data[40 + i] = (value ushr (8 * i)).toByte()
     }
 }
