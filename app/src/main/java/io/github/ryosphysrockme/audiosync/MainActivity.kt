@@ -294,6 +294,13 @@ class MainActivity : ComponentActivity() {
             nudgeBackHundredButton, nudgeBackButton,
             nudgeForwardButton, nudgeForwardHundredButton
         )) {
+            // Avoid Android's default Button minimum width, which would make
+            // four controls overflow narrow portrait screens.
+            button.minWidth = 0
+            button.minimumWidth = 0
+            button.setPadding(0, button.paddingTop, 0, button.paddingBottom)
+            button.textSize = 12f
+            button.isAllCaps = false
             nudgeRow.addView(
                 button, LinearLayout.LayoutParams(
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
