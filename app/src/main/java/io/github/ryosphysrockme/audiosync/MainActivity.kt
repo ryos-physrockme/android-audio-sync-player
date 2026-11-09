@@ -2,6 +2,10 @@ package io.github.ryosphysrockme.audiosync
 
 import android.Manifest
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.text.TextUtils
+import android.view.Gravity
+import android.view.View
 import android.content.pm.PackageManager
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
@@ -17,6 +21,7 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
@@ -77,6 +82,13 @@ class MainActivity : ComponentActivity() {
     private var nudgeTickScheduled = false
 
     private lateinit var fileText: TextView
+    private lateinit var fileMetaText: TextView
+    private lateinit var syncStateText: TextView
+    private lateinit var playbackEndText: TextView
+    private lateinit var fileSelectButton: Button
+    private lateinit var similarityBar: SeekBar
+    private lateinit var offsetBar: SeekBar
+    private lateinit var nudgeRow: LinearLayout
     private lateinit var headerText: TextView
     private lateinit var playbackText: TextView
     private lateinit var microphoneText: TextView
@@ -204,10 +216,11 @@ class MainActivity : ComponentActivity() {
             setPadding(0, 12, 0, 20)
         }, fullWidth())
 
-        container.addView(Button(this).apply {
+        fileSelectButton = Button(this).apply {
             setText(R.string.choose_audio)
             setOnClickListener { chooseAudioFile.launch(arrayOf("audio/*")) }
-        }, fullWidth())
+        }
+        container.addView(fileSelectButton, fullWidth())
 
         fileText = TextView(this).apply {
             setText(R.string.no_audio)
@@ -267,7 +280,7 @@ class MainActivity : ComponentActivity() {
 
         // Four equally weighted buttons, with the 100 ms controls outside
         // the original 50 ms controls. Short labels fit narrow phones.
-        val nudgeRow = LinearLayout(this).apply {
+        nudgeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
         nudgeBackHundredButton = Button(this).apply {
@@ -362,7 +375,7 @@ class MainActivity : ComponentActivity() {
         }
         container.addView(similarityText, fullWidth())
 
-        container.addView(SeekBar(this).apply {
+        similarityBar = SeekBar(this).apply {
             max = 45
             progress = (similarityThreshold * 100.0).roundToInt() - 50
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -378,7 +391,8 @@ class MainActivity : ComponentActivity() {
                         .apply()
                 }
             })
-        }, fullWidth())
+        }
+        container.addView(similarityBar, fullWidth())
 
         offsetText = TextView(this).apply {
             text = offsetLabel(correctionOffsetMs)
@@ -386,7 +400,7 @@ class MainActivity : ComponentActivity() {
         }
         container.addView(offsetText, fullWidth())
 
-        container.addView(SeekBar(this).apply {
+        offsetBar = SeekBar(this).apply {
             max = 120
             progress = 60 + (correctionOffsetMs / 10L).toInt()
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -402,9 +416,11 @@ class MainActivity : ComponentActivity() {
                         .putLong(HEADPHONE_OFFSET_KEY, correctionOffsetMs).apply()
                 }
             })
-        }, fullWidth())
+        }
+        container.addView(offsetBar, fullWidth())
 
         setContentView(ScrollView(this).apply { addView(container) })
+        installCompactScreen()
     }
 
     private fun fullWidth(): LinearLayout.LayoutParams =
