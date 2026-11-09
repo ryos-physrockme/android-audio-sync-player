@@ -179,7 +179,8 @@ internal class MatchConsensus {
      */
     fun evaluate(
         result: RecordingMatcher.Result?,
-        capturedAtMs: Long
+        capturedAtMs: Long,
+        similarityThreshold: Double = RecordingMatcher.DEFAULT_SIMILARITY_THRESHOLD
     ): Evaluation {
         if (result == null) {
             pending = null
@@ -188,7 +189,7 @@ internal class MatchConsensus {
         if (!result.confident) {
             pending = null
             return Evaluation(
-                if (result.score < 0.72) Status.LOW_SIMILARITY else Status.AMBIGUOUS
+                if (result.score < similarityThreshold) Status.LOW_SIMILARITY else Status.AMBIGUOUS
             )
         }
 
