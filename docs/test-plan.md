@@ -45,6 +45,17 @@ Acceptance tests for the new UI:
 
 MP3 and M4A are not yet validated end-to-end; test those separately with licensed reference recordings once the WAV baseline remains stable.
 
+## Manual ±50 ms playback nudge (v0.2.8-dev)
+
+Test with the same WAV recording playing externally and locally, after the automatic initial lock.
+
+- During local playback, tap `−50 ms 戻る` and `＋50 ms 進む` separately. The local time should move in 50 ms steps, while **the audio continues playing**; it must not invoke `pause()` or cancel microphone matching.
+- Rapid repeated taps should accumulate their requested offsets; try near the beginning and end of the track to verify bounds.
+- The cumulative command display should reset after choosing another recording or beginning a new microphone-listening session. The manual initial offset slider must remain unchanged.
+- Paused local playback should not respond to the nudge buttons; they should become active again after manual resume.
+- Verify that manual nudging does not re-enable the old automatic seeking loop. The microphone may still show new timeline errors because the player has been moved.
+- Record any audible click, repeated fragment or buffering glitch. Millisecond seek targets do not guarantee millisecond acoustic accuracy.
+
 ## What to measure
 
 The goal is not just a correct track label. It is the difference between the acoustic signal heard from the external source and the locally played reference at the listener.
