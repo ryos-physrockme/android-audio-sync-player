@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
     private var fadeInGeneration = 0L
     private var pendingAutoStart = false
     private var lastPlaybackEvent = "待機中"
+    private var lastSyncButtonActive: Boolean? = null
     private val manualNudge = ManualNudge()
     private var lastNudgeTickMs = 0L
     private var wasPlayingDuringPreviousTick = false
@@ -137,8 +138,8 @@ class MainActivity : ComponentActivity() {
                                 active.duration.toLong()
                             ).toInt()
                     }
-                    playbackText.text = formatTime(active.currentPosition) +
-                        " / " + formatTime(active.duration)
+                    playbackText.text = formatTime(active.currentPosition)
+                    playbackEndText.text = formatTime(active.duration)
                     val canNudge = active.isPlaying && !pendingAutoStart
                     nudgeBackButton.isEnabled = canNudge
                     nudgeBackHundredButton.isEnabled = canNudge
@@ -149,6 +150,7 @@ class MainActivity : ComponentActivity() {
                     // Player can be released when a new reference is chosen.
                 }
             }
+            updateSyncState()
             uiHandler.postDelayed(this, 200L)
         }
     }
@@ -698,6 +700,49 @@ class MainActivity : ComponentActivity() {
             "他候補との差0.075以上・2回連続確認は固定")
                 .format(Locale.JAPAN, threshold)
 
+    /**
+     * Primary status is intentionally concise. Playback control and detailed
+     * diagnostics are independent from microphone synchronization.
+     */
+    private fun updateSyncState() {
+        if (!::syncStateText.isInitialized || !::microphoneButton.isInitialized) return
+        val active = player
+        val label = when {
+            selectedAudioUri == null -> "音源を選択してください"
+            captureRunning && initialAlignment.phase == InitialAlignmentPolicy.Phase.PLAYING &&
+                active?.playWhenReady == true -> "同期して再生中"
+            captureRunning && pendingAutoStart -> "再生を準備中"
+            captureRunning -> "外部音声を認識中"
+            active?.playWhenReady == true -> "再生中"
+            !prepared || reference == null -> "音源を準備中"
+            else -> "同期待機中"
+        }
+        syncStateText.text = label
+        syncStateText.setTextColor(
+            if (captureRunning && initialAlignment.phase == InitialAlignmentPolicy.Phase.PLAYING) {
+                UiDesign.SUCCESS
+            } else if (captureRunning) {
+                UiDesign.PRIMARY
+            } else {
+                UiDesign.SECONDARY
+            }
+        )
+        if (lastSyncButtonActive != captureRunning) {
+            lastSyncButtonActive = captureRunning
+            microphoneButton.setText(
+                if (captureRunning) R.string.stop_microphone else R.string.start_microphone
+            )
+            UiDesign.button(
+                microphoneButton,
+                if (captureRunning) UiDesign.rounded(
+                    this, UiDesign.SURFACE_STRONG, 19, true
+                ) else UiDesign.primary(this),
+                UiDesign.FOREGROUND,
+                if (captureRunning) 18f else 20f
+            )
+        }
+    }
+
     private fun offsetLabel(offsetMs: Long): String =
         "次の初回同期位置の補正：%+d ms（＋はスマホ側を先に進める）"
             .format(Locale.JAPAN, offsetMs)
@@ -728,6 +773,7 @@ class MainActivity : ComponentActivity() {
         player = null
 
         fileText.text = displayName(uri)
+        fileMetaText.text = "解析中"
         headerText.text = "音声形式：ヘッダーを調べています"
         Thread({
             val report = AudioHeaderInspector.inspect(applicationContext.contentResolver, uri)
@@ -789,6 +835,7 @@ class MainActivity : ComponentActivity() {
                     microphoneButton.isEnabled = false
                     seekBar.isEnabled = false
                     playbackText.setText(R.string.file_error)
+                    fileMetaText.text = "再生の準備に失敗"
                 }
                 true
             }
@@ -798,6 +845,7 @@ class MainActivity : ComponentActivity() {
             next.release()
             player = null
             playbackText.setText(R.string.file_error)
+            fileMetaText.text = "再生の準備に失敗"
             lastPlaybackEvent = "読み込み処理で例外が発生：${error.javaClass.simpleName} / " +
                 (error.localizedMessage ?: "詳細なし")
             updatePlayerStatus()
@@ -816,6 +864,11 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (token == indexGeneration && !isFinishing && !isDestroyed) {
                         reference = indexed
+                        fileMetaText.text = if (indexWarnings.isEmpty()) {
+                            "解析完了"
+                        } else {
+                            "解析完了・警告あり"
+                        }
                         microphoneButton.isEnabled = prepared && microphoneRecorder == null
                         matchText.text = "解析完了（%dフレーム）。マイクを開始してください。"
                             .format(Locale.JAPAN, indexed.size) +
@@ -833,6 +886,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (token == indexGeneration && !isFinishing && !isDestroyed) {
                         reference = null
+                        fileMetaText.text = "解析に失敗"
                         microphoneButton.isEnabled = false
                         matchText.text = "解析できませんでした：" +
                             (error.localizedMessage ?: error.javaClass.simpleName)
@@ -868,10 +922,12 @@ class MainActivity : ComponentActivity() {
             updateManualNudge(active)
             val accepted = manualNudge.request(deltaMs)
             if (accepted == 0L) {
-                nudgeStatusText.text = "未完了の補正が上限（±500 ms）に達しています。"
                 return
             }
             updateManualNudge(active)
+            nudgeStatusText.text = "補正 %+d ms".format(
+                Locale.JAPAN, manualNudge.requestedTotalMs
+            )
             lastPlaybackEvent = "手動で時間差%+d msの速度補正を要求。音源はシークしません。"
                 .format(Locale.JAPAN, accepted)
             updatePlayerStatus()
@@ -893,16 +949,6 @@ class MainActivity : ComponentActivity() {
         if (kotlin.math.abs(speed - appliedNudgeSpeed) > 0.0001f) {
             active.setPlaybackSpeed(speed)
             appliedNudgeSpeed = speed
-        }
-        nudgeStatusText.text = if (manualNudge.active) {
-            "速度補正中：%.2f倍、未完了 %+,.0f ms、要求累計 %+d ms".format(
-                Locale.JAPAN, speed, manualNudge.remainingCorrectionMs,
-                manualNudge.requestedTotalMs
-            )
-        } else {
-            "補正終了：1.00倍（要求累計 %+d ms）".format(
-                Locale.JAPAN, manualNudge.requestedTotalMs
-            )
         }
     }
 
@@ -927,7 +973,7 @@ class MainActivity : ComponentActivity() {
             // Player may already be released.
         }
         if (::nudgeStatusText.isInitialized) {
-            nudgeStatusText.text = "再生中の時間補正：左＝遅らせる、右＝進める（現在1.00倍）"
+            nudgeStatusText.text = "補正 +0 ms"
         }
     }
 
