@@ -23,6 +23,12 @@ internal object ReferenceDecoder {
         uri: Uri,
         cancelled: () -> Boolean = { false }
     ): List<SpectralFeatures.Frame> {
+        // Fast, platform-independent path for the common PCM16 WAV format.
+        // In particular this avoids MediaExtractor.setDataSource(), which
+        // fails on some device/file combinations despite a valid WAV header.
+        val wavFrames = WavPcmIndexer.tryIndex(context.contentResolver, uri, cancelled)
+        if (wavFrames != null) return wavFrames
+
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         var codecStarted = false
