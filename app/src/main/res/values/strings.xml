@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">音声同期プレーヤー</string>
-    <string name="prototype_notice">実験版 v0.2.3：初回同期で一度だけ再生位置を変更します。以後は自動シークせず、推定差を表示します。</string>
+    <string name="prototype_notice">実験版 v0.2.5：WAV読み込み方式を変更。初回同期後は再生位置を自動補正せず、推定差を表示します。</string>
     <string name="choose_audio">音声ファイルを選択</string>
     <string name="no_audio">音源が選択されていません</string>
     <string name="play_audio">再生</string>

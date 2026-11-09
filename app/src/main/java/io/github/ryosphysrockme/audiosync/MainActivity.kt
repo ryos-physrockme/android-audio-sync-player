@@ -3,13 +3,11 @@ package io.github.ryosphysrockme.audiosync
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTimestamp
-import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Bundle
@@ -45,7 +43,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private var selectedAudioUri: Uri? = null
-    private var player: MediaPlayer? = null
+    private var player: LocalPlayback? = null
     private var prepared = false
     private var reference: List<SpectralFeatures.Frame>? = null
 
@@ -337,15 +335,9 @@ class MainActivity : ComponentActivity() {
         playbackText.setText(R.string.loading)
         matchText.text = "音源を解析中。数秒程度の音声特徴列を曲全体について計算します。"
 
-        val next = MediaPlayer()
+        val next = LocalPlayback(this)
         try {
-            next.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
-            next.setDataSource(this, uri)
+            next.setDataSource(uri)
             next.setOnPreparedListener {
                 if (player === next && token == indexGeneration) {
                     prepared = true
@@ -382,7 +374,7 @@ class MainActivity : ComponentActivity() {
             }
             next.setOnErrorListener { _, what, extra ->
                 if (player === next) {
-                    lastPlaybackEvent = "再生エラー（what=$what, extra=$extra）"
+                    lastPlaybackEvent = "Media3再生エラー（code=$what）：${next.errorDetail}"
                     pendingAutoStart = false
                     updatePlayerStatus()
                     prepared = false

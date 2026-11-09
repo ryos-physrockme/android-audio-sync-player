@@ -34,11 +34,11 @@ Recognizing a song and locating its position is only the first part. The listene
 
 ## Current implementation
 
-- **Reference preprocessing:** Android `MediaExtractor` and `MediaCodec` decode the selected local file, downmix to mono and linearly resample it to 16 kHz.
+- **Reference preprocessing:** a direct streaming PCM16 WAV parser for RIFF/WAVE files; for other formats, Android `MediaExtractor` and `MediaCodec`. Both compute mono spectral features at 16 kHz.
 - **Features:** a self-contained, streaming Kotlin implementation of Hann-windowed spectral features (2048-point Fourier transform, 512-sample hop, 16 frequency bands).
 - **Recognition:** the last 96 feature frames (about 3 seconds) are compared against the whole reference using a coarse-to-fine search. Insufficient or ambiguous matches are rejected.
 - **Continuity check:** two strong, temporally consistent observations are required before the initial automatic seek. Repeated or ambiguous candidates are still rejected.
-- **Playback (v0.2.3-dev):** Android `MediaPlayer` seeks once on initial lock. While the microphone continues matching, no further automatic seeks, pauses, or playback-speed changes are issued. To retry an initial alignment, stop and start the microphone again.
+- **Playback (v0.2.5-dev):** Media3 ExoPlayer seeks once on initial lock. While the microphone continues matching, no further automatic seeks, pauses, or playback-speed changes are issued. To retry an initial alignment, stop and start the microphone again.
 - **Diagnostics:** while tracking, the app shows the median of recent estimated media-time differences (external minus local), their change since the first accepted post-start observation, and the sample count. They are **not measurements of physical audio output latency**.
 - **Calibration:** a manual offset control allows −600 to +600 ms in 10 ms steps and affects the next initial alignment only. Positive values advance the local position.
 - **Privacy:** microphone audio is processed on-device; recordings are not stored or uploaded by the app.
@@ -112,6 +112,27 @@ For RIFF/WAVE files, it shows the WAV format code (integer PCM, IEEE float, WAVE
 If the player shows a generic error and the extractor says "Failed to instantiate extractor", the header result helps distinguish nonstandard WAV encoding from a valid-looking WAV that Android still cannot open. A valid header does **not** prove the remainder of the file is valid or that the phone supports the encoding. The same source file can be playable by one app while failing in MediaPlayer/MediaExtractor.
 
 The code also prints the exception type and message if playback preparation throws synchronously. No source audio files are included in the repository.
+
+## WAV loading fallback (version 0.2.5-dev)
+
+On some Android devices, a file that appears as ordinary **RIFF/WAVE, PCM integer, 16-bit, 44100 Hz, stereo** fails in the platform's \`MediaExtractor\` and \`MediaPlayer\` while other audio apps can open it.
+
+This version changes the two independent paths:
+
+- **Reference feature extraction:** WAV PCM16 is parsed directly from the selected document input stream (RIFF chunk parsing, optional metadata chunks, mono/stereo, PCM data conversion, and resampling). This avoids Android's native \`MediaExtractor.setDataSource()\` for the target recording.
+- **Playback:** the app now uses \`androidx.media3:media3-exoplayer\` (version 1.11.1). Media3 has its own WAV container extractor, so playback does not depend on the old platform \`MediaPlayer\` container parsing path.
+
+Other file formats still use the original MediaExtractor/MediaCodec reference decoding path, and ExoPlayer for playback. This is an experimental compatibility fix and has not yet been validated on every device/file.
+
+The first-initial-seek-only control behavior of v0.2.3 is preserved. No continuous automatic seeking was added.
+
+### How to verify
+
+1. Install the \`android-debug-apk\` from a successful GitHub Actions run for the new commit. This build may require uninstalling a previous CI debug build if its temporary signing certificate differs.
+2. Choose the **same PCM16 WAV file** that previously displayed both \`Failed to instantiate extractor\` and the MediaPlayer error.
+3. Report whether the app now shows the reference-feature analysis complete and whether the manual **再生** button produces sound. After those both work, test the microphone auto-start separately.
+
+If either side still fails, retain the full on-screen error text: playback now surfaces Media3's descriptive error name, and the reference decoder reports failures independently.
 
 ## Development status and build instructions
 

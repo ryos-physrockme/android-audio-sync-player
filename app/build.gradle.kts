@@ -11,8 +11,8 @@ android {
         applicationId = "io.github.ryosphysrockme.audiosync"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.2.4-dev"
+        versionCode = 7
+        versionName = "0.2.5-dev"
     }
 
     compileOptions {
@@ -27,5 +27,6 @@ kotlin {
 
 dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
     testImplementation("junit:junit:4.13.2")
 }
