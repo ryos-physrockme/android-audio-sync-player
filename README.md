@@ -46,6 +46,14 @@ Recognizing a song and locating its position is only the first part. The listene
 
 The matching code is original Kotlin code. [Olaf](https://github.com/JorenSix/Olaf) remains a reference, **not a dependency**. Its AGPL-3.0 license and patent notices must be considered before any integration.
 
+## Screen rotation and state preservation
+
+Version 0.2.2-dev keeps the existing Activity and its in-memory microphone capture, audio-reference index and player alive across ordinary portrait/landscape orientation changes. The UI uses a single responsive ScrollView rather than separate portrait/landscape resources.
+
+For other system-driven Activity recreations, the selected document URI is saved in Activity state and automatically reloaded and reindexed when possible. This fallback restores the file selection, but it does not promise uninterrupted playback in every situation.
+
+Leaving the app (e.g., switching to another app or locking the screen) still stops microphone capture. Running sync in the background requires a separate foreground-service design and is not implemented.
+
 ## Practical trial and acceptance criteria
 
 1. Load the same recording that a **separate** speaker or computer will play.
