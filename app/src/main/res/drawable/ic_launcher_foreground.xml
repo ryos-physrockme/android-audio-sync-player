@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Headphone headband -->
+    <path android:pathData="M29,56 L29,49 C29,35 40,24 54,24 C68,24 79,35 79,49 L79,56"
+        android:fillColor="#00000000"
+        android:strokeColor="#F9F6FF"
+        android:strokeWidth="5.4"
+        android:strokeLineCap="round"/>
+    <!-- Cushioned earcups -->
+    <path android:pathData="M27,52 C23,52 21,55 21,60 L21,66 C21,72 24,75 29,75 L35,75 L35,52 Z"
+        android:fillColor="#F9F6FF"/>
+    <path android:pathData="M81,52 C85,52 87,55 87,60 L87,66 C87,72 84,75 79,75 L73,75 L73,52 Z"
+        android:fillColor="#F9F6FF"/>
+    <!-- Synchronized audio waveform -->
+    <path android:pathData="M44,51 L44,65"
+        android:strokeColor="#A8F6EB" android:strokeWidth="4.6"
+        android:strokeLineCap="round"/>
+    <path android:pathData="M54,44 L54,70"
+        android:strokeColor="#D9CCFF" android:strokeWidth="5"
+        android:strokeLineCap="round"/>
+    <path android:pathData="M64,51 L64,65"
+        android:strokeColor="#A8F6EB" android:strokeWidth="4.6"
+        android:strokeLineCap="round"/>
+</vector>
