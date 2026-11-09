@@ -134,6 +134,19 @@ The first-initial-seek-only control behavior of v0.2.3 is preserved. No continuo
 
 If either side still fails, retain the full on-screen error text: playback now surfaces Media3's descriptive error name, and the reference decoder reports failures independently.
 
+## WAV data length recovery (v0.2.6-dev)
+
+Some playable RIFF/WAVE PCM16 files contain an unknown `data` chunk length (`0xFFFFFFFF`) or a declared length that exceeds the bytes accessible through the Android document provider. The earlier direct WAV indexer discarded the entire feature index on end-of-file with `WAV audio data ended unexpectedly`, even after reading several minutes of usable audio.
+
+The direct WAV indexer now processes all **complete interleaved PCM frames** available before end-of-file. It may finish with a warning rather than an error **only when at least 96 spectral frames are available** (about 3 seconds, the minimum matching window).
+
+- If `data` size is `0xFFFFFFFF`, the screen reports the unspecified length and the actual number of bytes read.
+- If a finite declared `data` size is larger than the bytes available, the screen reports both sizes and warns that the file may be truncated.
+- Any incomplete trailing PCM frame is discarded with a warning.
+- A file too short for useful matching is still rejected. Damaged or truncated audio is **not silently declared healthy**.
+
+This addresses feature indexing, not playback, which continues using Media3 ExoPlayer. Automatic playback still performs only the first initial seek per microphone session. Real-device validation remains necessary.
+
 ## Development status and build instructions
 
 The committed Android screen supports:
