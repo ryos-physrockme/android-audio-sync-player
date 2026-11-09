@@ -39,6 +39,12 @@ internal object AudioHeaderInspector {
         val signature = ascii(bytes, 0, 4)
         val type = ascii(bytes, 8, 4)
         if (ascii(bytes, 0, 3) == "ID3") return Report("MP3（ID3ヘッダー）")
+        if ((bytes[0].toInt() and 0xff) == 0xff &&
+            ((bytes[1].toInt() and 0xe0) == 0xe0)) {
+            val layer = (bytes[1].toInt() ushr 1) and 0x03
+            if (layer != 0) return Report("MPEG Audioフレーム（MP3など）")
+            return Report("AAC ADTSの可能性がある音声フレーム")
+        }
         if (signature == "fLaC") return Report("FLAC")
         if (signature == "OggS") return Report("Oggコンテナー")
         if (ascii(bytes, 4, 4) == "ftyp") return Report("MP4 / M4Aコンテナー")

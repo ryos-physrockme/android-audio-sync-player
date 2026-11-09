@@ -30,13 +30,14 @@ internal object ReferenceDecoder {
         val wavFrames = WavPcmIndexer.tryIndex(context.contentResolver, uri, cancelled, onWarning)
         if (wavFrames != null) return wavFrames
 
-        val extractor = MediaExtractor()
+        // The platform extractor is retained for compressed sources, but
+        // access the picker-granted file descriptor first. This avoids
+        // relying solely on MediaExtractor.setDataSource(Context, Uri).
+        val extractor = ExtractorSource.open(context, uri, onWarning)
         var codec: MediaCodec? = null
         var codecStarted = false
 
         try {
-            extractor.setDataSource(context, uri, null)
-
             var audioTrack = -1
             for (i in 0 until extractor.trackCount) {
                 val format = extractor.getTrackFormat(i)

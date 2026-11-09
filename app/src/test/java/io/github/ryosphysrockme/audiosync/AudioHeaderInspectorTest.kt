@@ -74,6 +74,24 @@ class AudioHeaderInspectorTest {
     }
 
     @Test
+    fun mp3WithoutId3CanBeRecognizedFromMpegFrameSync() {
+        val mp3 = ByteArray(24)
+        mp3[0] = 0xff.toByte()
+        mp3[1] = 0xfb.toByte() // MPEG layer III sync bits
+        val result = AudioHeaderInspector.inspect(mp3)
+        assertTrue(result.description.contains("MPEG Audio"))
+    }
+
+    @Test
+    fun m4aContainerIsRecognizedByFtypBox() {
+        val m4a = ByteArray(32)
+        putAscii(m4a, 4, "ftyp")
+        putAscii(m4a, 8, "M4A ")
+        val result = AudioHeaderInspector.inspect(m4a)
+        assertTrue(result.description.contains("M4A"))
+    }
+
+    @Test
     fun unknownOrTruncatedHeadersAreNotCalledPcm() {
         val truncated = AudioHeaderInspector.inspect(byteArrayOf(1, 2, 3))
         assertTrue(truncated.description.contains("短すぎ"))
