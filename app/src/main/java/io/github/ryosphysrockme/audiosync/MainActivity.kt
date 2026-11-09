@@ -70,6 +70,9 @@ class MainActivity : ComponentActivity() {
     private var fadeInGeneration = 0L
     private var pendingAutoStart = false
     private var lastPlaybackEvent = "待機中"
+    private var manualNudgeTotalMs = 0L
+    private var lastNudgeRequestAtMs = 0L
+    private var lastNudgeRequestTargetMs: Long? = null
 
     private lateinit var fileText: TextView
     private lateinit var headerText: TextView
@@ -81,6 +84,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var offsetText: TextView
     private lateinit var similarityText: TextView
     private lateinit var playButton: Button
+    private lateinit var nudgeBackButton: Button
+    private lateinit var nudgeForwardButton: Button
+    private lateinit var nudgeStatusText: TextView
     private lateinit var microphoneButton: Button
     private lateinit var seekBar: SeekBar
 
@@ -98,6 +104,9 @@ class MainActivity : ComponentActivity() {
                     }
                     playbackText.text = formatTime(active.currentPosition) +
                         " / " + formatTime(active.duration)
+                    val canNudge = active.playWhenReady && !pendingAutoStart
+                    nudgeBackButton.isEnabled = canNudge
+                    nudgeForwardButton.isEnabled = canNudge
                     updatePlayerStatus()
                 } catch (_: IllegalStateException) {
                     // Player can be released when a new reference is chosen.
@@ -222,6 +231,36 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { togglePlayback() }
         }
         container.addView(playButton, fullWidth())
+
+        nudgeStatusText = TextView(this).apply {
+            text = "再生中の微調整：50 msずつ移動（累計 +0 ms）"
+            textSize = 14f
+            setPadding(0, 12, 0, 6)
+        }
+        container.addView(nudgeStatusText, fullWidth())
+
+        val nudgeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        nudgeBackButton = Button(this).apply {
+            text = "−50 ms 戻る"
+            isEnabled = false
+            setOnClickListener { nudgePlayback(-ManualNudge.STEP_MS) }
+        }
+        nudgeForwardButton = Button(this).apply {
+            text = "＋50 ms 進む"
+            isEnabled = false
+            setOnClickListener { nudgePlayback(ManualNudge.STEP_MS) }
+        }
+        val nudgeLayout = LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        )
+        nudgeRow.addView(nudgeBackButton, nudgeLayout)
+        nudgeRow.addView(
+            nudgeForwardButton,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        container.addView(nudgeRow, fullWidth())
 
         microphoneText = TextView(this).apply {
             setText(R.string.mic_idle)
@@ -362,6 +401,11 @@ class MainActivity : ComponentActivity() {
         timelineText.text = "推定時刻差：初回同期後に表示（再生中は自動シークしません）"
         prepared = false
         pendingAutoStart = false
+        manualNudgeTotalMs = 0L
+        lastNudgeRequestTargetMs = null
+        nudgeStatusText.text = "再生中の微調整：50 msずつ移動（累計 +0 ms）"
+        nudgeBackButton.isEnabled = false
+        nudgeForwardButton.isEnabled = false
         lastPlaybackEvent = "新しいファイルを準備しています。"
         seekBar.isEnabled = false
         playButton.isEnabled = false
@@ -495,6 +539,56 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * A manual seek of 50 ms while playback remains requested. It never
+     * stops microphone monitoring, changes the initial offset setting, or
+     * re-arms the automatic one-seek alignment policy.
+     *
+     * Rapid taps accumulate using the most recently requested position,
+     * since Media3 may report a stale position while asynchronously seeking.
+     */
+    private fun nudgePlayback(deltaMs: Long) {
+        val active = player ?: return
+        if (!prepared || pendingAutoStart || !active.playWhenReady) {
+            nudgeStatusText.text = "微調整は再生中に使用できます。"
+            return
+        }
+        try {
+            val nowMs = SystemClock.elapsedRealtime()
+            val reportedPositionMs = active.currentPosition.toLong()
+            val recentTarget = lastNudgeRequestTargetMs
+            val basePositionMs =
+                if (recentTarget != null && nowMs - lastNudgeRequestAtMs in 0L..500L) {
+                    // Prefer the latest requested position on successive taps.
+                    // Do not advance the synthetic position past the real player.
+                    recentTarget
+                } else {
+                    reportedPositionMs
+                }
+            val targetMs = ManualNudge.targetPositionMs(
+                currentPositionMs = basePositionMs,
+                durationMs = active.duration.toLong(),
+                deltaMs = deltaMs
+            )
+            if (targetMs == basePositionMs) return
+            active.seekTo(targetMs.toInt())
+            lastNudgeRequestTargetMs = targetMs
+            lastNudgeRequestAtMs = nowMs
+            val effectiveDelta = targetMs - basePositionMs
+            manualNudgeTotalMs += effectiveDelta
+            nudgeStatusText.text =
+                "手動補正：%+d ms（累計 %+d ms）・再生を継続".format(
+                    Locale.JAPAN, effectiveDelta, manualNudgeTotalMs
+                )
+            lastPlaybackEvent = "手動で位置を%+d ms調整しました（自動同期は継続観測）。"
+                .format(Locale.JAPAN, effectiveDelta)
+            updatePlayerStatus()
+        } catch (error: IllegalStateException) {
+            nudgeStatusText.text = "手動補正に失敗："
+                .plus(error.localizedMessage ?: "プレーヤーの状態が不正")
+        }
+    }
+
     private fun togglePlayback() {
         if (!prepared) return
         stopMicrophone()
@@ -564,6 +658,9 @@ class MainActivity : ComponentActivity() {
             consensus.reset()
             initialAlignment.reset()
             timelineErrors.reset()
+            manualNudgeTotalMs = 0L
+            lastNudgeRequestTargetMs = null
+            nudgeStatusText.text = "再生中の微調整：50 msずつ移動（累計 +0 ms）"
             timelineText.text = "推定時刻差：外部音源の認識と初回同期を待っています。"
             pendingAutoStart = false
             microphoneButton.setText(R.string.stop_microphone)

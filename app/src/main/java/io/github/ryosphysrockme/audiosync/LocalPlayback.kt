@@ -62,6 +62,10 @@ internal class LocalPlayback(context: Context) {
     val isPlaying: Boolean
         get() = delegate.isPlaying
 
+    /** Remains true while a seek temporarily buffers; seeking must not pause it. */
+    val playWhenReady: Boolean
+        get() = delegate.playWhenReady
+
     val duration: Int
         get() = delegate.duration.takeIf { it != C.TIME_UNSET && it >= 0L }
             ?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
