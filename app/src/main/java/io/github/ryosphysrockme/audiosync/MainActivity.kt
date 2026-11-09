@@ -87,7 +87,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var similarityText: TextView
     private lateinit var playButton: Button
     private lateinit var nudgeBackButton: Button
+    private lateinit var nudgeBackHundredButton: Button
     private lateinit var nudgeForwardButton: Button
+    private lateinit var nudgeForwardHundredButton: Button
     private lateinit var nudgeStatusText: TextView
     private lateinit var microphoneButton: Button
     private lateinit var seekBar: SeekBar
@@ -127,7 +129,9 @@ class MainActivity : ComponentActivity() {
                         " / " + formatTime(active.duration)
                     val canNudge = active.isPlaying && !pendingAutoStart
                     nudgeBackButton.isEnabled = canNudge
+                    nudgeBackHundredButton.isEnabled = canNudge
                     nudgeForwardButton.isEnabled = canNudge
+                    nudgeForwardHundredButton.isEnabled = canNudge
                     updatePlayerStatus()
                 } catch (_: IllegalStateException) {
                     // Player can be released when a new reference is chosen.
@@ -255,33 +259,47 @@ class MainActivity : ComponentActivity() {
         container.addView(playButton, fullWidth())
 
         nudgeStatusText = TextView(this).apply {
-            text = "再生中の微調整：±50 msずつ速度で補正（現在1.00倍）"
+            text = "再生中の時間補正：左＝遅らせる、右＝進める（現在1.00倍）"
             textSize = 14f
             setPadding(0, 12, 0, 6)
         }
         container.addView(nudgeStatusText, fullWidth())
 
+        // Four equally weighted buttons, with the 100 ms controls outside
+        // the original 50 ms controls. Short labels fit narrow phones.
         val nudgeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
+        nudgeBackHundredButton = Button(this).apply {
+            text = "−100 ms"
+            isEnabled = false
+            setOnClickListener { nudgePlayback(-ManualNudge.LARGE_STEP_MS) }
+        }
         nudgeBackButton = Button(this).apply {
-            text = "−50 ms 遅らせる"
+            text = "−50 ms"
             isEnabled = false
             setOnClickListener { nudgePlayback(-ManualNudge.STEP_MS) }
         }
         nudgeForwardButton = Button(this).apply {
-            text = "＋50 ms 進める"
+            text = "＋50 ms"
             isEnabled = false
             setOnClickListener { nudgePlayback(ManualNudge.STEP_MS) }
         }
-        val nudgeLayout = LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-        )
-        nudgeRow.addView(nudgeBackButton, nudgeLayout)
-        nudgeRow.addView(
-            nudgeForwardButton,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        )
+        nudgeForwardHundredButton = Button(this).apply {
+            text = "＋100 ms"
+            isEnabled = false
+            setOnClickListener { nudgePlayback(ManualNudge.LARGE_STEP_MS) }
+        }
+        for (button in listOf(
+            nudgeBackHundredButton, nudgeBackButton,
+            nudgeForwardButton, nudgeForwardHundredButton
+        )) {
+            nudgeRow.addView(
+                button, LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+                )
+            )
+        }
         container.addView(nudgeRow, fullWidth())
 
         microphoneText = TextView(this).apply {
@@ -425,7 +443,9 @@ class MainActivity : ComponentActivity() {
         prepared = false
         pendingAutoStart = false
         nudgeBackButton.isEnabled = false
+        nudgeBackHundredButton.isEnabled = false
         nudgeForwardButton.isEnabled = false
+        nudgeForwardHundredButton.isEnabled = false
         lastPlaybackEvent = "新しいファイルを準備しています。"
         seekBar.isEnabled = false
         playButton.isEnabled = false
@@ -634,7 +654,7 @@ class MainActivity : ComponentActivity() {
             // Player may already be released.
         }
         if (::nudgeStatusText.isInitialized) {
-            nudgeStatusText.text = "再生中の微調整：±50 msずつ速度で補正（現在1.00倍）"
+            nudgeStatusText.text = "再生中の時間補正：左＝遅らせる、右＝進める（現在1.00倍）"
         }
     }
 
