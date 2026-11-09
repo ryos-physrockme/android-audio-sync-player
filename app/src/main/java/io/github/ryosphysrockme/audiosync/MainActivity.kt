@@ -27,6 +27,9 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import java.util.ArrayDeque
 import java.util.Locale
@@ -76,6 +79,7 @@ class MainActivity : ComponentActivity() {
     private var pendingAutoStart = false
     private var lastPlaybackEvent = "待機中"
     private var lastSyncButtonActive: Boolean? = null
+    private var lastSyncButtonEnabled: Boolean? = null
     private val manualNudge = ManualNudge()
     private var lastNudgeTickMs = 0L
     private var wasPlayingDuringPreviousTick = false
@@ -85,6 +89,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var fileText: TextView
     private lateinit var fileMetaText: TextView
     private lateinit var syncStateText: TextView
+    private lateinit var recognitionStateText: TextView
+    private lateinit var recognitionCandidateText: TextView
     private lateinit var playbackEndText: TextView
     private lateinit var fileSelectButton: Button
     private lateinit var similarityBar: SeekBar
@@ -696,9 +702,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun similarityLabel(threshold: Double): String =
-        ("再生開始の一致度閾値：%.2f（低いほど開始しやすい）\n" +
-            "他候補との差0.075以上・2回連続確認は固定")
-                .format(Locale.JAPAN, threshold)
+        "一致度閾値 %.2f".format(Locale.JAPAN, threshold)
 
     /**
      * Primary status is intentionally concise. Playback control and detailed
@@ -744,8 +748,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun offsetLabel(offsetMs: Long): String =
-        "次の初回同期位置の補正：%+d ms（＋はスマホ側を先に進める）"
-            .format(Locale.JAPAN, offsetMs)
+        "同期オフセット %+d ms".format(Locale.JAPAN, offsetMs)
 
     private fun loadAudioFile(uri: Uri) {
         selectedAudioUri = uri
