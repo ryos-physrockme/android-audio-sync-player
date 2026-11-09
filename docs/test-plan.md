@@ -25,6 +25,12 @@ The success criterion for this experiment is absence of automatic back-and-forth
 
 A possible subsequent strategy, inspired by manual correction, is to pause the local player when it runs *ahead* of the external media timeline and resume only after the external source catches up. This must be evaluated separately because pause/resume itself creates an audible gap and the signal estimate can be noisy. It is **not implemented** in v0.2.3-dev.
 
+## Direct PCM WAV data-length compatibility
+
+The synthetic parser tests cover four distinct cases: a correct finite `data` size; an unknown `0xFFFFFFFF` length typical of streaming output; an overstated finite length with sufficient complete audio frames; and a truncated file too short to obtain the required 96 spectral frames. The first three should produce a usable feature index; the last must fail.
+
+With a real recording, verify that the app displays `解析完了` and permits microphone monitoring. For inconsistent lengths, the UI must also report the declared length (if known) and the count actually read. Successful indexing does **not** demonstrate that a damaged file has no missing tail.
+
 ## What to measure
 
 The goal is not just a correct track label. It is the difference between the acoustic signal heard from the external source and the locally played reference at the listener.

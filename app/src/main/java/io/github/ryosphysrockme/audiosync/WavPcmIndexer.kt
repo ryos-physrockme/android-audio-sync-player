@@ -25,17 +25,19 @@ internal object WavPcmIndexer {
     fun tryIndex(
         resolver: ContentResolver,
         uri: Uri,
-        cancelled: () -> Boolean = { false }
+        cancelled: () -> Boolean = { false },
+        onWarning: (String) -> Unit = {}
     ): List<SpectralFeatures.Frame>? {
         val stream = resolver.openInputStream(uri)
             ?: throw IOException("Unable to open selected audio file as InputStream")
-        return BufferedInputStream(stream, 64 * 1024).use { indexPcm16(it, cancelled) }
+        return BufferedInputStream(stream, 64 * 1024).use { indexPcm16(it, cancelled, onWarning) }
     }
 
     // Pure parser for reproducible JVM tests.
     fun indexPcm16(
         input: InputStream,
-        cancelled: () -> Boolean = { false }
+        cancelled: () -> Boolean = { false },
+        onWarning: (String) -> Unit = {}
     ): List<SpectralFeatures.Frame>? {
         val riff = ByteArray(12)
         if (!readExactly(input, riff, 0, riff.size)) return null
@@ -83,7 +85,7 @@ internal object WavPcmIndexer {
                         channels !in 1..2 || sampleRate !in 8_000..192_000) {
                         return null
                     }
-                    return indexData(input, size, sampleRate, channels, cancelled)
+                    return indexData(input, size, sampleRate, channels, cancelled, onWarning)
                 }
                 else -> {
                     // Skip metadata without allocating a buffer for it.
@@ -106,7 +108,8 @@ internal object WavPcmIndexer {
         bytesToRead: Long,
         sourceRate: Int,
         channels: Int,
-        cancelled: () -> Boolean
+        cancelled: () -> Boolean,
+        onWarning: (String) -> Unit
     ): List<SpectralFeatures.Frame> {
         val frames = ArrayList<SpectralFeatures.Frame>()
         val features = SpectralFeatures.Stream()
@@ -114,6 +117,8 @@ internal object WavPcmIndexer {
         val bytesPerFrame = channels * 2
         val buffer = ByteArray(16 * 1024 + 4)
         var remaining = bytesToRead
+        var actualBytes = 0L
+        var stoppedAtEof = false
         var leftover = 0
 
         fun acceptSample(sample: Float) {
@@ -131,9 +136,18 @@ internal object WavPcmIndexer {
             if (cancelled()) throw InterruptedException("Reference indexing cancelled")
             val wanted = minOf(16 * 1024L, remaining).toInt()
             val count = input.read(buffer, leftover, wanted)
-            if (count < 0) throw IOException("WAV audio data ended unexpectedly")
+            if (count < 0) {
+                // A valid playable PCM recording may declare 0xFFFFFFFF as
+                // its unknown data length, or overstate the number of data
+                // bytes actually available. Index all complete PCM frames
+                // that can be read, then surface a warning instead of
+                // rejecting the entire recording.
+                stoppedAtEof = true
+                break
+            }
             if (count == 0) continue
             remaining -= count
+            actualBytes += count
             val available = leftover + count
             val aligned = available / bytesPerFrame * bytesPerFrame
             var i = 0
@@ -151,7 +165,27 @@ internal object WavPcmIndexer {
                 buffer.copyInto(buffer, 0, aligned, available)
             }
         }
-        if (leftover != 0) throw IOException("WAV data ends in an incomplete PCM frame")
+        // Incomplete tail bytes cannot form an interleaved PCM sample frame.
+        // Do not fabricate samples from the remaining 1-3 bytes.
+        if (leftover != 0) {
+            onWarning(
+                "音声データ末尾の%dバイトを除外しました（PCMフレーム未完了）"
+                    .format(leftover)
+            )
+        }
+        if (stoppedAtEof) {
+            if (bytesToRead == 0xffff_ffffL) {
+                onWarning(
+                    "WAVのdata長が0xFFFFFFFF（未確定）です。実際に読み取れた%,dバイトを解析しました。"
+                        .format(actualBytes)
+                )
+            } else {
+                onWarning(
+                    "WAVのdata長が一致しません（指定%,dバイト、取得%,dバイト）。読み取れた範囲を解析しました。"
+                        .format(bytesToRead, actualBytes)
+                )
+            }
+        }
         require(frames.size >= 96) {
             "WAV recording is too short for the 3-second matching window"
         }

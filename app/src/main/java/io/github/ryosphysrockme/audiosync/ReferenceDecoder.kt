@@ -21,12 +21,13 @@ internal object ReferenceDecoder {
     fun index(
         context: Context,
         uri: Uri,
-        cancelled: () -> Boolean = { false }
+        cancelled: () -> Boolean = { false },
+        onWarning: (String) -> Unit = {}
     ): List<SpectralFeatures.Frame> {
         // Fast, platform-independent path for the common PCM16 WAV format.
         // In particular this avoids MediaExtractor.setDataSource(), which
         // fails on some device/file combinations despite a valid WAV header.
-        val wavFrames = WavPcmIndexer.tryIndex(context.contentResolver, uri, cancelled)
+        val wavFrames = WavPcmIndexer.tryIndex(context.contentResolver, uri, cancelled, onWarning)
         if (wavFrames != null) return wavFrames
 
         val extractor = MediaExtractor()
