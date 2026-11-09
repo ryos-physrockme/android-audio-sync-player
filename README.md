@@ -103,6 +103,16 @@ For the first trial, select the identical file on both devices, use wired headph
 
 If playback does not start, report the full lines shown for `推定位置`, `一致度`, `他候補との差`, and `プレーヤー`; these distinguish recognition failures from player failures without collecting recordings.
 
+## Investigating a locally stored audio file that Android cannot decode
+
+Version 0.2.4-dev adds a **file header diagnostic** to the main screen. After selecting a local recording, it reads only the first 128 KiB through the Android document URI (without saving or uploading any audio). This is an independent check from MediaPlayer and MediaExtractor.
+
+For RIFF/WAVE files, it shows the WAV format code (integer PCM, IEEE float, WAVEFORMATEXTENSIBLE or unknown), bit depth, sample rate and channel count. It also recognizes common MP3, MP4/M4A, FLAC and Ogg signatures when a file has an incorrect extension.
+
+If the player shows a generic error and the extractor says "Failed to instantiate extractor", the header result helps distinguish nonstandard WAV encoding from a valid-looking WAV that Android still cannot open. A valid header does **not** prove the remainder of the file is valid or that the phone supports the encoding. The same source file can be playable by one app while failing in MediaPlayer/MediaExtractor.
+
+The code also prints the exception type and message if playback preparation throws synchronously. No source audio files are included in the repository.
+
 ## Development status and build instructions
 
 The committed Android screen supports:

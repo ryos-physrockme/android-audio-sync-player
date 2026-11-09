@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
     private var lastPlaybackEvent = "待機中"
 
     private lateinit var fileText: TextView
+    private lateinit var headerText: TextView
     private lateinit var playbackText: TextView
     private lateinit var microphoneText: TextView
     private lateinit var matchText: TextView
@@ -165,6 +166,13 @@ class MainActivity : ComponentActivity() {
             setPadding(0, 12, 0, 12)
         }
         container.addView(fileText, fullWidth())
+
+        headerText = TextView(this).apply {
+            text = "音声形式：未選択"
+            textSize = 14f
+            setPadding(0, 0, 0, 12)
+        }
+        container.addView(headerText, fullWidth())
 
         playbackText = TextView(this).apply {
             text = "00:00 / 00:00"
@@ -315,6 +323,17 @@ class MainActivity : ComponentActivity() {
         player = null
 
         fileText.text = displayName(uri)
+        headerText.text = "音声形式：ヘッダーを調べています"
+        Thread({
+            val report = AudioHeaderInspector.inspect(applicationContext.contentResolver, uri)
+            runOnUiThread {
+                if (token == indexGeneration && !isFinishing && !isDestroyed) {
+                    headerText.text = "音声形式：${report.description}" +
+                        (report.warning?.let { "\n注意：$it" } ?: "")
+                }
+            }
+        }, "audio-header-inspector").start()
+
         playbackText.setText(R.string.loading)
         matchText.text = "音源を解析中。数秒程度の音声特徴列を曲全体について計算します。"
 
@@ -376,10 +395,13 @@ class MainActivity : ComponentActivity() {
             }
             player = next
             next.prepareAsync()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             next.release()
             player = null
             playbackText.setText(R.string.file_error)
+            lastPlaybackEvent = "読み込み処理で例外が発生：${error.javaClass.simpleName} / " +
+                (error.localizedMessage ?: "詳細なし")
+            updatePlayerStatus()
         }
 
         // A separate decoder is needed even if MediaPlayer has already prepared.
