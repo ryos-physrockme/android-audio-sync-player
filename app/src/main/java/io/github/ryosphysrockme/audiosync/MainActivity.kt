@@ -56,11 +56,13 @@ class MainActivity : ComponentActivity() {
     private var correctionOffsetMs = 0L
     private var pendingAutoStart = false
     private var lastCorrectionElapsedMs = 0L
+    private var lastPlaybackEvent = "待機中"
 
     private lateinit var fileText: TextView
     private lateinit var playbackText: TextView
     private lateinit var microphoneText: TextView
     private lateinit var matchText: TextView
+    private lateinit var playerStatusText: TextView
     private lateinit var offsetText: TextView
     private lateinit var playButton: Button
     private lateinit var microphoneButton: Button
@@ -80,6 +82,7 @@ class MainActivity : ComponentActivity() {
                     }
                     playbackText.text = formatTime(active.currentPosition) +
                         " / " + formatTime(active.duration)
+                    updatePlayerStatus()
                 } catch (_: IllegalStateException) {
                     // Player can be released when a new reference is chosen.
                 }
@@ -214,6 +217,13 @@ class MainActivity : ComponentActivity() {
         }
         container.addView(matchText, fullWidth())
 
+        playerStatusText = TextView(this).apply {
+            text = "プレーヤー：停止中"
+            textSize = 15f
+            setPadding(0, 0, 0, 18)
+        }
+        container.addView(playerStatusText, fullWidth())
+
         offsetText = TextView(this).apply {
             text = offsetLabel(0L)
             textSize = 15f
@@ -244,6 +254,20 @@ class MainActivity : ComponentActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT
         )
 
+    private fun updatePlayerStatus() {
+        val state = try {
+            when {
+                player == null || !prepared -> "準備中"
+                pendingAutoStart -> "シーク完了待ち"
+                player?.isPlaying == true -> "再生中"
+                else -> "停止中"
+            }
+        } catch (_: IllegalStateException) {
+            "状態取得に失敗"
+        }
+        playerStatusText.text = "プレーヤー：$state\n$lastPlaybackEvent"
+    }
+
     private fun offsetLabel(offsetMs: Long): String =
         "出力位置の手動補正：%+d ms（＋はイヤホン側を先に進める）"
             .format(Locale.JAPAN, offsetMs)
@@ -255,6 +279,7 @@ class MainActivity : ComponentActivity() {
         consensus.reset()
         prepared = false
         pendingAutoStart = false
+        lastPlaybackEvent = "新しいファイルを準備しています。"
         seekBar.isEnabled = false
         playButton.isEnabled = false
         microphoneButton.isEnabled = false
@@ -278,6 +303,7 @@ class MainActivity : ComponentActivity() {
             next.setOnPreparedListener {
                 if (player === next && token == indexGeneration) {
                     prepared = true
+                    lastPlaybackEvent = "ローカル音源を再生する準備ができました。"
                     playButton.isEnabled = true
                     seekBar.isEnabled = true
                     microphoneButton.isEnabled = reference != null
@@ -288,20 +314,29 @@ class MainActivity : ComponentActivity() {
                 if (player === next && pendingAutoStart && captureRunning) {
                     pendingAutoStart = false
                     try {
-                        if (!next.isPlaying) {
-                            next.start()
-                            playButton.setText(R.string.pause_audio)
-                        }
-                    } catch (_: IllegalStateException) {
-                        matchText.text = "再生開始に失敗しました。"
+                        if (!next.isPlaying) next.start()
+                        playButton.setText(R.string.pause_audio)
+                        lastPlaybackEvent = "位置変更が完了し、自動再生を要求しました。"
+                        updatePlayerStatus()
+                    } catch (error: IllegalStateException) {
+                        lastPlaybackEvent = "再生開始に失敗：" +
+                            (error.localizedMessage ?: "MediaPlayerの状態異常")
+                        updatePlayerStatus()
                     }
                 }
             }
             next.setOnCompletionListener {
-                if (player === next) playButton.setText(R.string.play_audio)
-            }
-            next.setOnErrorListener { _, _, _ ->
                 if (player === next) {
+                    playButton.setText(R.string.play_audio)
+                    lastPlaybackEvent = "曲の末尾まで再生しました。"
+                    updatePlayerStatus()
+                }
+            }
+            next.setOnErrorListener { _, what, extra ->
+                if (player === next) {
+                    lastPlaybackEvent = "再生エラー（what=$what, extra=$extra）"
+                    pendingAutoStart = false
+                    updatePlayerStatus()
                     prepared = false
                     playButton.isEnabled = false
                     microphoneButton.isEnabled = false
@@ -368,10 +403,13 @@ class MainActivity : ComponentActivity() {
             if (active.isPlaying) {
                 active.pause()
                 playButton.setText(R.string.play_audio)
+                lastPlaybackEvent = "手動で一時停止しました。"
             } else {
                 active.start()
                 playButton.setText(R.string.pause_audio)
+                lastPlaybackEvent = "手動で再生しました。"
             }
+            updatePlayerStatus()
         } catch (_: IllegalStateException) {
             playbackText.setText(R.string.file_error)
         }
@@ -524,28 +562,26 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showMatchResult(match: RecordingMatcher.Result?, observationNs: Long) {
+        val evaluation = consensus.evaluate(match, observationNs / 1_000_000L)
         if (match == null) {
-            matchText.text = "照合保留：静音または十分な特徴がありません。"
-            consensus.submit(null, observationNs / 1_000_000L)
+            matchText.text = "照合保留：静音、または照合に使える音響特徴が不足しています。"
             return
         }
-        val quality = "一致度 %.2f / 次候補との差 %.2f"
+        val quality = "一致度 %.3f（目安0.720以上）／他候補との差 %.3f（目安0.075以上）"
             .format(Locale.US, match.score, match.margin)
-        matchText.text = if (match.confident) {
-            "候補：%s（%s）".format(
-                Locale.JAPAN,
-                formatTime(match.referencePositionMs.toInt()),
-                quality
-            )
-        } else {
-            "照合保留（候補 %s、%s）".format(
-                Locale.JAPAN,
-                formatTime(match.referencePositionMs.toInt()),
-                quality
-            )
+        val reason = when (evaluation.status) {
+            MatchConsensus.Status.NO_MATCH -> "音源が認識されていません"
+            MatchConsensus.Status.LOW_SIMILARITY -> "再生保留：一致度が不足しています"
+            MatchConsensus.Status.AMBIGUOUS -> "再生保留：似た候補が複数あります"
+            MatchConsensus.Status.WAITING_FOR_CONFIRMATION -> "再生待機：2回目の位置確認が必要です"
+            MatchConsensus.Status.CANDIDATE_CHANGED -> "再生保留：候補時刻の進み方が一致しません"
+            MatchConsensus.Status.ACCEPTED -> "位置を確認しました"
+            MatchConsensus.Status.TRACKING -> "連続して位置を追跡しています"
         }
-
-        val accepted = consensus.submit(match, observationNs / 1_000_000L)
+        matchText.text = "推定位置 %s\n%s\n%s".format(
+            Locale.JAPAN, formatTime(match.referencePositionMs.toInt()), quality, reason
+        )
+        val accepted = evaluation.acceptance
         if (accepted != null) {
             alignPlayer(accepted, observationNs)
         }
@@ -569,11 +605,29 @@ class MainActivity : ComponentActivity() {
             val nowElapsedMs = SystemClock.elapsedRealtime()
             if (!currentlyPlaying) {
                 pendingAutoStart = true
+                lastPlaybackEvent = "自動再生のため再生位置を %s に変更中。"
+                    .format(Locale.JAPAN, formatTime(target.toInt()))
                 active.seekTo(target.toInt())
                 lastCorrectionElapsedMs = nowElapsedMs
-                matchText.append("\n自動再生を開始：%s".format(
-                    Locale.JAPAN, formatTime(target.toInt())
-                ))
+                updatePlayerStatus()
+
+                // Some devices or short tracks do not deliver the asynchronous
+                // seek callback promptly while paused. Do not remain silent
+                // forever after a successful high-confidence match.
+                uiHandler.postDelayed({
+                    if (player === active && prepared && captureRunning && pendingAutoStart) {
+                        pendingAutoStart = false
+                        try {
+                            if (!active.isPlaying) active.start()
+                            playButton.setText(R.string.pause_audio)
+                            lastPlaybackEvent = "シーク完了通知が遅れたため、再生を開始しました。"
+                        } catch (error: IllegalStateException) {
+                            lastPlaybackEvent = "自動再生に失敗：" +
+                                (error.localizedMessage ?: "MediaPlayerの状態異常")
+                        }
+                        updatePlayerStatus()
+                    }
+                }, 1200L)
             } else if (
                 abs(positionError) >= 220L &&
                 nowElapsedMs - lastCorrectionElapsedMs >= 1_500L
@@ -586,9 +640,12 @@ class MainActivity : ComponentActivity() {
                     Locale.JAPAN, positionError
                 ))
             }
-        } catch (_: IllegalStateException) {
+        } catch (error: IllegalStateException) {
+            lastPlaybackEvent = "再生位置の制御に失敗：" +
+                (error.localizedMessage ?: "MediaPlayerの状態異常")
             matchText.append("\n再生位置の制御に失敗しました。")
             pendingAutoStart = false
+            updatePlayerStatus()
         }
     }
 
