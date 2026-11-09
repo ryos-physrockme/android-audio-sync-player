@@ -396,18 +396,28 @@ class MainActivity : ComponentActivity() {
             updatePlayerStatus()
         }
 
-        // A separate decoder is needed even if MediaPlayer has already prepared.
+        // Reference features are computed independently of playback.
         Thread({
             try {
-                val indexed = ReferenceDecoder.index(applicationContext, uri) {
-                    token != indexGeneration
-                }
+                val indexWarnings = mutableListOf<String>()
+                val indexed = ReferenceDecoder.index(
+                    context = applicationContext,
+                    uri = uri,
+                    cancelled = { token != indexGeneration },
+                    onWarning = { indexWarnings.add(it) }
+                )
                 runOnUiThread {
                     if (token == indexGeneration && !isFinishing && !isDestroyed) {
                         reference = indexed
                         microphoneButton.isEnabled = prepared && microphoneRecorder == null
                         matchText.text = "解析完了（%dフレーム）。マイクを開始してください。"
-                            .format(Locale.JAPAN, indexed.size)
+                            .format(Locale.JAPAN, indexed.size) +
+                            if (indexWarnings.isNotEmpty()) {
+                                "\n注意：WAVヘッダーの長さとファイル末尾を確認してください。\n" +
+                                    indexWarnings.joinToString("\n")
+                            } else {
+                                ""
+                            }
                     }
                 }
             } catch (_: InterruptedException) {
