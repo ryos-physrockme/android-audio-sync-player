@@ -34,7 +34,7 @@ Recognizing a song and locating its position is only the first part. The listene
 
 ## Current implementation
 
-- **Reference preprocessing:** a direct streaming PCM16 WAV parser for RIFF/WAVE files; for other formats, Android `MediaExtractor` and `MediaCodec`. Both compute mono spectral features at 16 kHz.
+- **Reference preprocessing:** a direct streaming PCM16 WAV parser for RIFF/WAVE files; for compressed formats, Android `MediaExtractor` and `MediaCodec`, opening the selected document through its file descriptor when possible. Both compute mono spectral features at 16 kHz.
 - **Features:** a self-contained, streaming Kotlin implementation of Hann-windowed spectral features (2048-point Fourier transform, 512-sample hop, 16 frequency bands).
 - **Recognition:** the last 96 feature frames (about 3 seconds) are compared against the whole reference using a coarse-to-fine search. The minimum similarity is user-adjustable (0.50–0.95, default 0.72); ambiguous matches remain rejected via an independent fixed margin and two-observation confirmation.
 - **Continuity check:** two strong, temporally consistent observations are required before the initial automatic seek. Repeated or ambiguous candidates are still rejected.
@@ -174,6 +174,30 @@ Two new buttons directly beneath the Play/Pause button allow **−50 ms 戻る**
 - The app never seeks automatically again during continuous playback in this experimental mode. However, Media3 seeks may briefly buffer or make an audible discontinuity. They cannot guarantee artifact-free correction, especially for compressed audio.
 
 This small seek is a deliberate first experiment. If even ±50 ms seeks are distracting, a future approach could briefly vary playback speed to accumulate a correction smoothly rather than jumping.
+
+## Compressed local audio: MP3 and M4A/AAC (v0.2.9-dev)
+
+The local player already uses Media3 ExoPlayer. This revision improves the independent **reference-feature indexing** path for compressed recordings:
+
+- MP3, including constant- and variable-bitrate files, and M4A containing AAC use Android `MediaExtractor` and `MediaCodec` to decode the selected file to mono samples for the spectral matcher.
+- Instead of relying only on `MediaExtractor.setDataSource(Context, Uri)`, the app first attempts the system-picker-granted file descriptor, including its offset/length. If this fails, it retries the original URI with a new extractor and reports the failed path.
+- The local header diagnostic now recognizes raw MPEG audio frame sync when an MP3 has no `ID3` header. This is for diagnostics, not decoding.
+- The existing direct PCM16 WAV indexing path remains unchanged.
+
+**Format scope:** this is experimental support for MP3 and AAC-in-M4A, not an assertion that every MP3, MP4 profile, codec, device or external recording will work. Other audio formats are not validated. Audio input remains offline and no media data is uploaded.
+
+### Reproducible Android codec test
+
+A device/emulator instrumentation test covers reference indexing and Media3 preparation of three original, generated 8-second recordings: constant-bitrate MP3, variable-bitrate MP3, and AAC-in-M4A. Files are generated as required and are not committed to the repository:
+
+```bash
+bash scripts/generate-audio-format-fixtures.sh
+./gradlew :app:connectedDebugAndroidTest
+```
+
+Use a supported Android device or an emulator. The dedicated [compressed-audio CI workflow](.github/workflows/audio-formats.yml) performs the same test using an Android emulator when audio-indexing code changes. This test verifies local container/decoder handling, **not** acoustic synchronization against an external speaker or headphone latency.
+
+The next physical test should select the *same compressed file* on the external player and the phone, wait for `解析完了`, then check automatic synchronization and the manual ±50 ms adjustment. Re-encoded versions of a song can have different encoder delay or padding and should be measured separately.
 
 ## Development status and build instructions
 
