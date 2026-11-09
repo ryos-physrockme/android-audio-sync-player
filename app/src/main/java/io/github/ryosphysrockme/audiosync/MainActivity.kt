@@ -13,6 +13,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.view.ViewGroup
 import android.widget.Button
@@ -25,6 +26,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import java.util.ArrayDeque
 import java.util.Locale
 import kotlin.math.log10
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
@@ -40,6 +42,9 @@ import kotlin.math.sqrt
 class MainActivity : ComponentActivity() {
     companion object {
         private const val SELECTED_AUDIO_URI_STATE = "selected_audio_uri"
+        private const val SETTINGS_NAME = "synchronization_preferences"
+        private const val SIMILARITY_THRESHOLD_KEY = "minimum_similarity_percent"
+        private const val HEADPHONE_OFFSET_KEY = "initial_offset_ms"
     }
 
     private var selectedAudioUri: Uri? = null
@@ -56,7 +61,13 @@ class MainActivity : ComponentActivity() {
     private val consensus = MatchConsensus()
     private val initialAlignment = InitialAlignmentPolicy()
     private val timelineErrors = TimelineErrorHistory()
+
+    // Read by the microphone worker after each chunk; written on the UI thread.
+    @Volatile
+    private var similarityThreshold = RecordingMatcher.DEFAULT_SIMILARITY_THRESHOLD
+
     private var correctionOffsetMs = 0L
+    private var fadeInGeneration = 0L
     private var pendingAutoStart = false
     private var lastPlaybackEvent = "待機中"
 
@@ -68,6 +79,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var timelineText: TextView
     private lateinit var playerStatusText: TextView
     private lateinit var offsetText: TextView
+    private lateinit var similarityText: TextView
     private lateinit var playButton: Button
     private lateinit var microphoneButton: Button
     private lateinit var seekBar: SeekBar
@@ -121,6 +133,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val settings = getSharedPreferences(SETTINGS_NAME, MODE_PRIVATE)
+        similarityThreshold = settings.getInt(SIMILARITY_THRESHOLD_KEY, 72)
+            .coerceIn(50, 95) / 100.0
+        correctionOffsetMs = settings.getLong(HEADPHONE_OFFSET_KEY, 0L)
+            .coerceIn(-600L, 600L)
         buildScreen()
         uiHandler.post(progressUpdate)
 
@@ -253,6 +270,30 @@ class MainActivity : ComponentActivity() {
         }
         container.addView(playerStatusText, fullWidth())
 
+        similarityText = TextView(this).apply {
+            text = similarityLabel(similarityThreshold)
+            textSize = 15f
+        }
+        container.addView(similarityText, fullWidth())
+
+        container.addView(SeekBar(this).apply {
+            max = 45
+            progress = (similarityThreshold * 100.0).roundToInt() - 50
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    similarityThreshold = (50 + progress) / 100.0
+                    similarityText.text = similarityLabel(similarityThreshold)
+                }
+                override fun onStartTrackingTouch(bar: SeekBar?) {}
+                override fun onStopTrackingTouch(bar: SeekBar?) {
+                    getSharedPreferences(SETTINGS_NAME, MODE_PRIVATE).edit()
+                        .putInt(SIMILARITY_THRESHOLD_KEY, (similarityThreshold * 100.0).roundToInt())
+                        .apply()
+                }
+            })
+        }, fullWidth())
+
         offsetText = TextView(this).apply {
             text = offsetLabel(0L)
             textSize = 15f
@@ -261,7 +302,7 @@ class MainActivity : ComponentActivity() {
 
         container.addView(SeekBar(this).apply {
             max = 120
-            progress = 60
+            progress = 60 + (correctionOffsetMs / 10L).toInt()
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
                     if (fromUser) {
@@ -270,7 +311,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 override fun onStartTrackingTouch(bar: SeekBar?) {}
-                override fun onStopTrackingTouch(bar: SeekBar?) {}
+                override fun onStopTrackingTouch(bar: SeekBar?) {
+                    getSharedPreferences(SETTINGS_NAME, MODE_PRIVATE).edit()
+                        .putLong(HEADPHONE_OFFSET_KEY, correctionOffsetMs).apply()
+                }
             })
         }, fullWidth())
 
@@ -297,6 +341,11 @@ class MainActivity : ComponentActivity() {
         playerStatusText.text = "プレーヤー：$state\n$lastPlaybackEvent"
     }
 
+    private fun similarityLabel(threshold: Double): String =
+        ("再生開始の一致度閾値：%.2f（低いほど開始しやすい）\n" +
+            "他候補との差0.075以上・2回連続確認は固定")
+                .format(Locale.JAPAN, threshold)
+
     private fun offsetLabel(offsetMs: Long): String =
         "次の初回同期位置の補正：%+d ms（＋はスマホ側を先に進める）"
             .format(Locale.JAPAN, offsetMs)
@@ -304,6 +353,7 @@ class MainActivity : ComponentActivity() {
     private fun loadAudioFile(uri: Uri) {
         selectedAudioUri = uri
         stopMicrophone()
+        cancelFadeIn()
         val token = ++indexGeneration
         reference = null
         consensus.reset()
@@ -352,12 +402,10 @@ class MainActivity : ComponentActivity() {
                 if (player === next && pendingAutoStart && captureRunning) {
                     pendingAutoStart = false
                     try {
-                        if (!next.isPlaying) next.start()
-                        initialAlignment.onPlayerStarted()
-                        timelineErrors.reset()
-                        playButton.setText(R.string.pause_audio)
-                        lastPlaybackEvent = "初回同期完了。以後は自動シークせず再生します。"
-                        updatePlayerStatus()
+                        startPlaybackWithFade(
+                            next, automatic = true,
+                            statusMessage = "初回同期完了。600 msでフェードインします（以後は自動シークしません）。"
+                        )
                     } catch (error: IllegalStateException) {
                         lastPlaybackEvent = "再生開始に失敗：" +
                             (error.localizedMessage ?: "MediaPlayerの状態異常")
@@ -454,15 +502,16 @@ class MainActivity : ComponentActivity() {
         try {
             val active = player ?: return
             if (active.isPlaying) {
+                cancelFadeIn()
                 active.pause()
                 playButton.setText(R.string.play_audio)
                 lastPlaybackEvent = "手動で一時停止しました。"
+                updatePlayerStatus()
             } else {
-                active.start()
-                playButton.setText(R.string.pause_audio)
-                lastPlaybackEvent = "手動で再生しました。"
+                startPlaybackWithFade(
+                    active, automatic = false, statusMessage = "手動再生：600 msでフェードイン"
+                )
             }
-            updatePlayerStatus()
         } catch (_: IllegalStateException) {
             playbackText.setText(R.string.file_error)
         }
@@ -569,10 +618,13 @@ class MainActivity : ComponentActivity() {
                                 (processedSamples - frame.centerSample) *
                                     1_000_000_000L / SpectralFeatures.SAMPLE_RATE
                         }
-                        val estimate = matcher.match(recent.toList())
+                        val selectedThreshold = similarityThreshold
+                        val estimate = matcher.match(
+                            recent.toList(), similarityThreshold = selectedThreshold
+                        )
                         runOnUiThread {
                             if (captureRunning && microphoneRecorder === capture) {
-                                showMatchResult(estimate, observationNs)
+                                showMatchResult(estimate, observationNs, selectedThreshold)
                             }
                         }
                     }
@@ -616,14 +668,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun showMatchResult(match: RecordingMatcher.Result?, observationNs: Long) {
-        val evaluation = consensus.evaluate(match, observationNs / 1_000_000L)
+    private fun showMatchResult(
+        match: RecordingMatcher.Result?,
+        observationNs: Long,
+        selectedThreshold: Double
+    ) {
+        val evaluation = consensus.evaluate(
+            match, observationNs / 1_000_000L, similarityThreshold = selectedThreshold
+        )
         if (match == null) {
             matchText.text = "照合保留：静音、または照合に使える音響特徴が不足しています。"
             return
         }
-        val quality = "一致度 %.3f（目安0.720以上）／他候補との差 %.3f（目安0.075以上）"
-            .format(Locale.US, match.score, match.margin)
+        val quality = "一致度 %.3f（設定%.2f以上）／他候補との差 %.3f（0.075以上）"
+            .format(Locale.US, match.score, selectedThreshold, match.margin)
         val reason = when (evaluation.status) {
             MatchConsensus.Status.NO_MATCH -> "音源が認識されていません"
             MatchConsensus.Status.LOW_SIMILARITY -> "再生保留：一致度が不足しています"
@@ -672,11 +730,10 @@ class MainActivity : ComponentActivity() {
                     if (player === active && prepared && captureRunning && pendingAutoStart) {
                         pendingAutoStart = false
                         try {
-                            if (!active.isPlaying) active.start()
-                            initialAlignment.onPlayerStarted()
-                            timelineErrors.reset()
-                            playButton.setText(R.string.pause_audio)
-                            lastPlaybackEvent = "シーク完了通知が遅れたため再生しました。再シークは無効です。"
+                            startPlaybackWithFade(
+                                active, automatic = true,
+                                statusMessage = "シーク通知が遅れたため再生開始。600 msでフェードインします。"
+                            )
                         } catch (error: IllegalStateException) {
                             lastPlaybackEvent = "初回の自動再生に失敗：" +
                                 (error.localizedMessage ?: "MediaPlayerの状態異常") +
@@ -716,7 +773,72 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Fades in the chosen audio output without ever changing the media
+     * position or the external recording's playback state.
+     */
+    private fun startPlaybackWithFade(
+        active: LocalPlayback,
+        automatic: Boolean,
+        statusMessage: String
+    ) {
+        val generation = ++fadeInGeneration
+        active.setVolume(0f)
+        try {
+            if (!active.isPlaying) active.start()
+        } catch (error: IllegalStateException) {
+            active.setVolume(1f)
+            throw error
+        }
+        if (automatic) {
+            initialAlignment.onPlayerStarted()
+            timelineErrors.reset()
+        }
+        playButton.setText(R.string.pause_audio)
+        lastPlaybackEvent = statusMessage
+        updatePlayerStatus()
+
+        val requestedAtMs = SystemClock.uptimeMillis()
+        val tick = object : Runnable {
+            var actualPlaybackStartMs = -1L
+            override fun run() {
+                if (player !== active || generation != fadeInGeneration) return
+                try {
+                    val nowMs = SystemClock.uptimeMillis()
+                    if (!active.isPlaying) {
+                        if (nowMs - requestedAtMs < 5_000L) {
+                            uiHandler.postDelayed(this, 40L)
+                        } else {
+                            // Never leave the player accidentally muted.
+                            active.setVolume(1f)
+                        }
+                        return
+                    }
+                    if (actualPlaybackStartMs < 0L) actualPlaybackStartMs = nowMs
+                    val elapsed = nowMs - actualPlaybackStartMs
+                    active.setVolume(FadeInEnvelope.gain(elapsed))
+                    if (elapsed < FadeInEnvelope.DURATION_MS) {
+                        uiHandler.postDelayed(this, 20L)
+                    }
+                } catch (_: IllegalStateException) {
+                    // The player may have been released by an Activity change.
+                }
+            }
+        }
+        uiHandler.post(tick)
+    }
+
+    private fun cancelFadeIn() {
+        fadeInGeneration++
+        try {
+            player?.setVolume(1f)
+        } catch (_: IllegalStateException) {
+            // Safe if already released.
+        }
+    }
+
     private fun stopMicrophone() {
+        cancelFadeIn()
         captureRunning = false
         pendingAutoStart = false
         if (microphoneRecorder != null) {
