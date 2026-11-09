@@ -79,6 +79,9 @@ internal class LocalPlayback(context: Context) {
     fun setOnCompletionListener(listener: (LocalPlayback) -> Unit) { onCompletion = listener }
     fun setOnErrorListener(listener: (LocalPlayback, Int, Int) -> Boolean) { onError = listener }
 
+    /** Linear playback gain: 0 = muted, 1 = full. Does not change device volume. */
+    fun setVolume(gain: Float) { delegate.volume = gain.coerceIn(0f, 1f) }
+
     fun prepareAsync() { delegate.prepare() }
     fun start() { delegate.play() }
     fun pause() { delegate.pause() }
