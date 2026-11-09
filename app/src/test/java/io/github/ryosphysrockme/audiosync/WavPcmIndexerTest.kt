@@ -133,7 +133,7 @@ class WavPcmIndexerTest {
         )
         assertTrue(frames != null && frames.size > 96)
         assertTrue(warnings.any { it.contains("一致しません") })
-        assertTrue(warnings.any { it.contains(declaredBytes.toString().take(2)) })
+        assertTrue(warnings.any { it.contains("%,d".format(declaredBytes)) })
     }
 
     @Test(expected = IllegalArgumentException::class)
