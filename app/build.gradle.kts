@@ -11,8 +11,8 @@ android {
         applicationId = "io.github.ryosphysrockme.audiosync"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.2.7-dev"
+        versionCode = 10
+        versionName = "0.2.8-dev"
     }
 
     compileOptions {
