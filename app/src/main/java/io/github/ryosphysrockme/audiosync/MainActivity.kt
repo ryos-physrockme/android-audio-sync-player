@@ -765,8 +765,11 @@ class MainActivity : ComponentActivity() {
     private fun updateSyncState() {
         if (!::syncStateText.isInitialized || !::microphoneButton.isInitialized) return
         val active = player
+        val hasFailure = ::fileMetaText.isInitialized &&
+            fileMetaText.text.toString().contains("失敗")
         val label = when {
             selectedAudioUri == null -> "音源を選択してください"
+            hasFailure -> "読み込みに失敗"
             captureRunning && initialAlignment.phase == InitialAlignmentPolicy.Phase.PLAYING &&
                 active?.playWhenReady == true -> "同期して再生中"
             captureRunning && pendingAutoStart -> "再生を準備中"
@@ -776,27 +779,46 @@ class MainActivity : ComponentActivity() {
             else -> "同期待機中"
         }
         syncStateText.text = label
-        syncStateText.setTextColor(
-            if (captureRunning && initialAlignment.phase == InitialAlignmentPolicy.Phase.PLAYING) {
+        syncStateText.setTextColor(when {
+            hasFailure -> UiDesign.ERROR
+            captureRunning && initialAlignment.phase == InitialAlignmentPolicy.Phase.PLAYING ->
                 UiDesign.SUCCESS
-            } else if (captureRunning) {
-                UiDesign.PRIMARY
-            } else {
-                UiDesign.SECONDARY
+            captureRunning -> UiDesign.PRIMARY
+            else -> UiDesign.FOREGROUND
+        })
+
+        // The live result remains visible without opening the debug panel.
+        if (::recognitionStateText.isInitialized) {
+            val show = captureRunning || (prepared && reference != null)
+            recognitionStateText.visibility = if (show) View.VISIBLE else View.GONE
+            if (!captureRunning) {
+                recognitionStateText.text = "外部音声の認識待ち"
+                recognitionStateText.setTextColor(UiDesign.SECONDARY)
+                recognitionCandidateText.visibility = View.GONE
             }
-        )
-        if (lastSyncButtonActive != captureRunning) {
+        }
+
+        // A disabled primary action must not look like a bright active button.
+        val enabled = microphoneButton.isEnabled
+        if (lastSyncButtonActive != captureRunning || lastSyncButtonEnabled != enabled) {
             lastSyncButtonActive = captureRunning
+            lastSyncButtonEnabled = enabled
             microphoneButton.setText(
                 if (captureRunning) R.string.stop_microphone else R.string.start_microphone
             )
             UiDesign.button(
                 microphoneButton,
-                if (captureRunning) UiDesign.rounded(
-                    this, UiDesign.SURFACE_STRONG, 19, true
-                ) else UiDesign.primary(this),
-                UiDesign.FOREGROUND,
-                if (captureRunning) 18f else 20f
+                when {
+                    !enabled -> UiDesign.rounded(this, UiDesign.SURFACE_RAISED, 13)
+                    captureRunning -> UiDesign.rounded(this, UiDesign.SURFACE_STRONG, 13)
+                    else -> UiDesign.primary(this, 13)
+                },
+                if (enabled && !captureRunning) UiDesign.BACKGROUND else if (enabled) {
+                    UiDesign.FOREGROUND
+                } else {
+                    UiDesign.SECONDARY
+                },
+                if (captureRunning) 16f else 18f
             )
         }
     }
