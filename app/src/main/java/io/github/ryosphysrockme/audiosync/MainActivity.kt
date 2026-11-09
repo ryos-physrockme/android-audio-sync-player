@@ -615,25 +615,34 @@ class MainActivity : ComponentActivity() {
             rowParams().apply { topMargin = dip(15) }
         )
 
-        listOf(headerText, microphoneText, matchText, timelineText, playerStatusText)
-            .forEach { diagnostic ->
-                detach(diagnostic)
-                styleText(diagnostic, 12f, UiDesign.SECONDARY)
-                detailPanel.addView(diagnostic, rowParams().apply { topMargin = dip(12) })
-            }
+        val diagnosticSections = listOf(
+            "音源" to headerText,
+            "マイク" to microphoneText,
+            "照合" to matchText,
+            "時刻差" to timelineText,
+            "再生状態" to playerStatusText
+        )
+        diagnosticSections.forEach { (heading, diagnostic) ->
+            detailPanel.addView(
+                UiDesign.text(this, heading, 13f, UiDesign.FOREGROUND, medium = true),
+                rowParams().apply { topMargin = dip(18) }
+            )
+            detach(diagnostic)
+            styleText(diagnostic, 12f, UiDesign.SECONDARY)
+            detailPanel.addView(diagnostic, rowParams().apply { topMargin = dip(5) })
+        }
         main.addView(detailPanel, rowParams().apply { topMargin = dip(7) })
 
         // The lower player is separate and remains within reach while the
         // user expands diagnostics above or rotates the device.
         val bottomShell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(UiDesign.BACKGROUND)
-            setPadding(dip(12), dip(6), dip(12), dip(12))
+            setBackgroundColor(UiDesign.SURFACE)
+            setPadding(dip(16), dip(10), dip(16), dip(12))
         }
+        // Plain bottom surface, rather than another floating oversized card.
         val playerCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = UiDesign.rounded(this@MainActivity, UiDesign.SURFACE, 20, true)
-            setPadding(dip(13), dip(13), dip(13), dip(13))
         }
         val timeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -684,29 +693,45 @@ class MainActivity : ComponentActivity() {
                 marginStart = if (index == 0) 0 else dip(6)
             }
         }
-        playerCard.addView(nudgeRow, rowParams().apply { topMargin = dip(7) })
+        playerCard.addView(nudgeRow, rowParams().apply { topMargin = dip(4) })
 
         detach(nudgeStatusText)
         styleText(nudgeStatusText, 15f, UiDesign.PRIMARY, medium = true)
         nudgeStatusText.text = "補正 +0 ms"
         nudgeStatusText.gravity = Gravity.CENTER
-        nudgeStatusText.setPadding(0, dip(11), 0, dip(5))
+        nudgeStatusText.setPadding(0, dip(9), 0, dip(3))
         playerCard.addView(nudgeStatusText, rowParams())
 
         detach(playButton)
         UiDesign.button(
             playButton,
-            UiDesign.rounded(this, UiDesign.SURFACE_RAISED, 22, true),
+            UiDesign.rounded(this, UiDesign.SURFACE_STRONG, 12),
             UiDesign.FOREGROUND,
             14f
         )
         val playRow = LinearLayout(this).apply { gravity = Gravity.CENTER }
-        playRow.addView(playButton, LinearLayout.LayoutParams(dip(132), dip(43)))
+        playRow.addView(playButton, LinearLayout.LayoutParams(dip(136), dip(44)))
         playerCard.addView(playRow, rowParams().apply { topMargin = dip(9) })
         bottomShell.addView(playerCard, rowParams())
         root.addView(bottomShell, rowParams())
 
+        // targetSdk 35+ draws underneath system bars on Android 15. Use the
+        // actual window insets rather than guessing a fixed navigation height.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.getInsetsController(window, window.decorView)
+            .isAppearanceLightStatusBars = false
+        WindowCompat.getInsetsController(window, window.decorView)
+            .isAppearanceLightNavigationBars = false
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, windowInsets ->
+            val safe = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+            windowInsets
+        }
         setContentView(root)
+        ViewCompat.requestApplyInsets(root)
         updateSyncState()
     }
 
