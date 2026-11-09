@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108" role="img" aria-label="Audio Sync Player icon with headphones and sound waveform">
+  <defs>
+    <linearGradient id="background" x1="0" x2="1" y1="1" y2="0">
+      <stop stop-color="#34238d"/>
+      <stop offset="0.5" stop-color="#5541be"/>
+      <stop offset="1" stop-color="#8365e7"/>
+    </linearGradient>
+  </defs>
+  <rect width="108" height="108" rx="24" fill="url(#background)"/>
+  <path d="M29 56V49C29 35 40 24 54 24S79 35 79 49V56" fill="none" stroke="#f9f6ff" stroke-width="5.4" stroke-linecap="round"/>
+  <path d="M27 52c-4 0-6 3-6 8v6c0 6 3 9 8 9h6V52zm54 0c4 0 6 3 6 8v6c0 6-3 9-8 9h-6V52z" fill="#f9f6ff"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M44 51v14M64 51v14" stroke="#a8f6eb" stroke-width="4.6"/>
+    <path d="M54 44v26" stroke="#d9ccff" stroke-width="5"/>
+  </g>
+</svg>
