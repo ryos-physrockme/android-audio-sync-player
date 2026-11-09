@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">音声同期プレーヤー</string>
-    <string name="prototype_notice">実験版 v0.2.6：WAVのデータ長に不整合があっても、読めたPCMデータを解析します。初回同期後の自動シークは行いません。</string>
+    <string name="prototype_notice">実験版 v0.2.7：再生開始の一致度を調整できます。自動開始・手動再生はフェードインします。初回同期後の自動シークは行いません。</string>
     <string name="choose_audio">音声ファイルを選択</string>
     <string name="no_audio">音源が選択されていません</string>
     <string name="play_audio">再生</string>
