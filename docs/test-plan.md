@@ -64,6 +64,20 @@ Test with the same WAV recording playing externally and locally, after the autom
 - Keep the WAV baseline and manual ±50 ms adjustment available; do not disable the independent ambiguity check to force compressed files to match.
 - Record format metadata, audio duration, device, codec errors and whether the sync position deviates systematically from WAV of the same original recording.
 
+## Smooth manual timing correction (v0.2.10-dev)
+
+The user reported that pressing `+50 ms` in v0.2.9 effectively halted playback. The button used an asynchronous `Media3.seekTo()`, which may enter a buffering state; `playWhenReady` alone does not mean audio is being output.
+
+The replacement uses 1.05x and 0.95x speed changes for approximately one second to accumulate a 50 ms correction, returning to 1.00x afterwards. Test:
+
+1. With local WAV/MP3/M4A actually playing and microphone listening, press `＋50 ms 進める`; check that the time position never jumps and that playback speed returns to 1.00x after about a second.
+2. Press `−50 ms 遅らせる`; listen for dropouts and pitch or time-stretch artifacts. A nonzero duration is necessary: this **does not** instantly move the local playhead 50 ms.
+3. Press either button several times quickly; verify the corrections accumulate, opposite signs cancel, and the queue is bounded to ±500 ms.
+4. Pause the music, choose another source, and navigate away. Verify the playback speed is restored to exactly 1.00x and no correction loop survives.
+5. Check that the microphone continues tracking, the independent initial offset remains unchanged, and the app never resumes automatic seek oscillations.
+
+Media3 may buffer when its playback parameters change. Record any such buffering separately from the original `seekTo()` stalls; do not claim artifact-free playback until device testing.
+
 ## What to measure
 
 The goal is not just a correct track label. It is the difference between the acoustic signal heard from the external source and the locally played reference at the listener.

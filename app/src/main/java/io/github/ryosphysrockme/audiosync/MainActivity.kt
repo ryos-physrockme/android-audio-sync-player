@@ -70,9 +70,11 @@ class MainActivity : ComponentActivity() {
     private var fadeInGeneration = 0L
     private var pendingAutoStart = false
     private var lastPlaybackEvent = "待機中"
-    private var manualNudgeTotalMs = 0L
-    private var lastNudgeRequestAtMs = 0L
-    private var lastNudgeRequestTargetMs: Long? = null
+    private val manualNudge = ManualNudge()
+    private var lastNudgeTickMs = 0L
+    private var wasPlayingDuringPreviousTick = false
+    private var appliedNudgeSpeed = 1f
+    private var nudgeTickScheduled = false
 
     private lateinit var fileText: TextView
     private lateinit var headerText: TextView
@@ -91,6 +93,25 @@ class MainActivity : ComponentActivity() {
     private lateinit var seekBar: SeekBar
 
     private val uiHandler = Handler(Looper.getMainLooper())
+    private val nudgeUpdate = object : Runnable {
+        override fun run() {
+            nudgeTickScheduled = false
+            val active = player ?: return
+            if (!prepared || !active.playWhenReady) {
+                resetManualNudge()
+                return
+            }
+            try {
+                updateManualNudge(active)
+                if (manualNudge.active) scheduleNudgeUpdate()
+            } catch (error: Exception) {
+                resetManualNudge()
+                nudgeStatusText.text = "速度補正に失敗：" +
+                    (error.localizedMessage ?: error.javaClass.simpleName)
+            }
+        }
+    }
+
     private val progressUpdate = object : Runnable {
         override fun run() {
             val active = player
@@ -104,7 +125,7 @@ class MainActivity : ComponentActivity() {
                     }
                     playbackText.text = formatTime(active.currentPosition) +
                         " / " + formatTime(active.duration)
-                    val canNudge = active.playWhenReady && !pendingAutoStart
+                    val canNudge = active.isPlaying && !pendingAutoStart
                     nudgeBackButton.isEnabled = canNudge
                     nudgeForwardButton.isEnabled = canNudge
                     updatePlayerStatus()
@@ -214,6 +235,7 @@ class MainActivity : ComponentActivity() {
                     val active = player ?: return
                     if (!prepared) return
                     stopMicrophone()
+                    resetManualNudge()
                     try {
                         val target = active.duration.toLong() * progress / seekBar.max
                         active.seekTo(target.toInt())
@@ -233,7 +255,7 @@ class MainActivity : ComponentActivity() {
         container.addView(playButton, fullWidth())
 
         nudgeStatusText = TextView(this).apply {
-            text = "再生中の微調整：50 msずつ移動（累計 +0 ms）"
+            text = "再生中の微調整：±50 msずつ速度で補正（現在1.00倍）"
             textSize = 14f
             setPadding(0, 12, 0, 6)
         }
@@ -243,12 +265,12 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.HORIZONTAL
         }
         nudgeBackButton = Button(this).apply {
-            text = "−50 ms 戻る"
+            text = "−50 ms 遅らせる"
             isEnabled = false
             setOnClickListener { nudgePlayback(-ManualNudge.STEP_MS) }
         }
         nudgeForwardButton = Button(this).apply {
-            text = "＋50 ms 進む"
+            text = "＋50 ms 進める"
             isEnabled = false
             setOnClickListener { nudgePlayback(ManualNudge.STEP_MS) }
         }
@@ -393,6 +415,7 @@ class MainActivity : ComponentActivity() {
         selectedAudioUri = uri
         stopMicrophone()
         cancelFadeIn()
+        resetManualNudge()
         val token = ++indexGeneration
         reference = null
         consensus.reset()
@@ -401,9 +424,6 @@ class MainActivity : ComponentActivity() {
         timelineText.text = "推定時刻差：初回同期後に表示（再生中は自動シークしません）"
         prepared = false
         pendingAutoStart = false
-        manualNudgeTotalMs = 0L
-        lastNudgeRequestTargetMs = null
-        nudgeStatusText.text = "再生中の微調整：50 msずつ移動（累計 +0 ms）"
         nudgeBackButton.isEnabled = false
         nudgeForwardButton.isEnabled = false
         lastPlaybackEvent = "新しいファイルを準備しています。"
@@ -459,6 +479,7 @@ class MainActivity : ComponentActivity() {
             }
             next.setOnCompletionListener {
                 if (player === next) {
+                    resetManualNudge()
                     playButton.setText(R.string.play_audio)
                     lastPlaybackEvent = "曲の末尾まで再生しました。"
                     updatePlayerStatus()
@@ -466,6 +487,7 @@ class MainActivity : ComponentActivity() {
             }
             next.setOnErrorListener { _, what, extra ->
                 if (player === next) {
+                    resetManualNudge()
                     lastPlaybackEvent = "Media3再生エラー（code=$what）：${next.errorDetail}"
                     pendingAutoStart = false
                     updatePlayerStatus()
@@ -540,52 +562,79 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * A manual seek of 50 ms while playback remains requested. It never
-     * stops microphone monitoring, changes the initial offset setting, or
-     * re-arms the automatic one-seek alignment policy.
-     *
-     * Rapid taps accumulate using the most recently requested position,
-     * since Media3 may report a stale position while asynchronously seeking.
+     * Each button press schedules a time correction through pitch-preserving
+     * playback-speed changes. No seekTo, pause or microphone restart.
      */
     private fun nudgePlayback(deltaMs: Long) {
         val active = player ?: return
-        if (!prepared || pendingAutoStart || !active.playWhenReady) {
-            nudgeStatusText.text = "微調整は再生中に使用できます。"
+        if (!prepared || pendingAutoStart || !active.isPlaying) {
+            nudgeStatusText.text = "微調整は音声再生中に使用できます。"
             return
         }
         try {
-            val nowMs = SystemClock.elapsedRealtime()
-            val reportedPositionMs = active.currentPosition.toLong()
-            val recentTarget = lastNudgeRequestTargetMs
-            val basePositionMs =
-                if (recentTarget != null && nowMs - lastNudgeRequestAtMs in 0L..500L) {
-                    // Prefer the latest requested position on successive taps.
-                    // Do not advance the synthetic position past the real player.
-                    recentTarget
-                } else {
-                    reportedPositionMs
-                }
-            val targetMs = ManualNudge.targetPositionMs(
-                currentPositionMs = basePositionMs,
-                durationMs = active.duration.toLong(),
-                deltaMs = deltaMs
-            )
-            if (targetMs == basePositionMs) return
-            active.seekTo(targetMs.toInt())
-            lastNudgeRequestTargetMs = targetMs
-            lastNudgeRequestAtMs = nowMs
-            val effectiveDelta = targetMs - basePositionMs
-            manualNudgeTotalMs += effectiveDelta
-            nudgeStatusText.text =
-                "手動補正：%+d ms（累計 %+d ms）・再生を継続".format(
-                    Locale.JAPAN, effectiveDelta, manualNudgeTotalMs
-                )
-            lastPlaybackEvent = "手動で位置を%+d ms調整しました（自動同期は継続観測）。"
-                .format(Locale.JAPAN, effectiveDelta)
+            updateManualNudge(active)
+            val accepted = manualNudge.request(deltaMs)
+            if (accepted == 0L) {
+                nudgeStatusText.text = "未完了の補正が上限（±500 ms）に達しています。"
+                return
+            }
+            updateManualNudge(active)
+            lastPlaybackEvent = "手動で時間差%+d msの速度補正を要求。音源はシークしません。"
+                .format(Locale.JAPAN, accepted)
             updatePlayerStatus()
-        } catch (error: IllegalStateException) {
-            nudgeStatusText.text = "手動補正に失敗："
-                .plus(error.localizedMessage ?: "プレーヤーの状態が不正")
+            scheduleNudgeUpdate()
+        } catch (error: Exception) {
+            resetManualNudge()
+            nudgeStatusText.text = "速度変更に失敗：" +
+                (error.localizedMessage ?: error.javaClass.simpleName)
+        }
+    }
+
+    private fun updateManualNudge(active: LocalPlayback) {
+        val now = SystemClock.elapsedRealtime()
+        val elapsed = if (lastNudgeTickMs == 0L) 0L
+            else (now - lastNudgeTickMs).coerceAtLeast(0L)
+        val speed = manualNudge.advance(elapsed, wasPlayingDuringPreviousTick)
+        lastNudgeTickMs = now
+        wasPlayingDuringPreviousTick = active.isPlaying
+        if (kotlin.math.abs(speed - appliedNudgeSpeed) > 0.0001f) {
+            active.setPlaybackSpeed(speed)
+            appliedNudgeSpeed = speed
+        }
+        nudgeStatusText.text = if (manualNudge.active) {
+            "速度補正中：%.2f倍、未完了 %+,.0f ms、要求累計 %+d ms".format(
+                Locale.JAPAN, speed, manualNudge.remainingCorrectionMs,
+                manualNudge.requestedTotalMs
+            )
+        } else {
+            "補正終了：1.00倍（要求累計 %+d ms）".format(
+                Locale.JAPAN, manualNudge.requestedTotalMs
+            )
+        }
+    }
+
+    private fun scheduleNudgeUpdate() {
+        if (!nudgeTickScheduled && manualNudge.active) {
+            nudgeTickScheduled = true
+            uiHandler.postDelayed(nudgeUpdate, 40L)
+        }
+    }
+
+    /** Return speed to 1.00x on pause, new file or Activity stop. */
+    private fun resetManualNudge() {
+        uiHandler.removeCallbacks(nudgeUpdate)
+        nudgeTickScheduled = false
+        lastNudgeTickMs = 0L
+        wasPlayingDuringPreviousTick = false
+        appliedNudgeSpeed = 1f
+        manualNudge.reset()
+        try {
+            player?.setPlaybackSpeed(1f)
+        } catch (_: Exception) {
+            // Player may already be released.
+        }
+        if (::nudgeStatusText.isInitialized) {
+            nudgeStatusText.text = "再生中の微調整：±50 msずつ速度で補正（現在1.00倍）"
         }
     }
 
@@ -595,7 +644,8 @@ class MainActivity : ComponentActivity() {
         pendingAutoStart = false
         try {
             val active = player ?: return
-            if (active.isPlaying) {
+            if (active.playWhenReady) {
+                resetManualNudge()
                 cancelFadeIn()
                 active.pause()
                 playButton.setText(R.string.play_audio)
@@ -658,9 +708,7 @@ class MainActivity : ComponentActivity() {
             consensus.reset()
             initialAlignment.reset()
             timelineErrors.reset()
-            manualNudgeTotalMs = 0L
-            lastNudgeRequestTargetMs = null
-            nudgeStatusText.text = "再生中の微調整：50 msずつ移動（累計 +0 ms）"
+            resetManualNudge()
             timelineText.text = "推定時刻差：外部音源の認識と初回同期を待っています。"
             pendingAutoStart = false
             microphoneButton.setText(R.string.stop_microphone)
@@ -879,6 +927,7 @@ class MainActivity : ComponentActivity() {
         automatic: Boolean,
         statusMessage: String
     ) {
+        resetManualNudge()
         val generation = ++fadeInGeneration
         active.setVolume(0f)
         try {
@@ -955,6 +1004,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         stopMicrophone()
+        resetManualNudge()
         pendingAutoStart = false
         try {
             if (player?.isPlaying == true) {
@@ -969,6 +1019,7 @@ class MainActivity : ComponentActivity() {
         indexGeneration++
         uiHandler.removeCallbacks(progressUpdate)
         stopMicrophone()
+        resetManualNudge()
         prepared = false
         player?.release()
         player = null

@@ -165,7 +165,7 @@ Media3 playback supports commonly used MP3 and M4A containers, subject to codec/
 
 ## Manual fine adjustment during playback (v0.2.8-dev)
 
-Two new buttons directly beneath the Play/Pause button allow **−50 ms 戻る** and **＋50 ms 進む** while a local recording is playing. They use the Media3 player's `seekTo()` to move the local playhead without calling Pause, stopping the microphone, changing playback speed, or re-arming automatic initial synchronization.
+Two buttons directly beneath Play/Pause allow the listener to adjust by 50 ms. **In v0.2.10 they use small playback-speed changes instead of seeks.** See the newer section below.
 
 - Each tap moves the **local** playhead by about 50 milliseconds. Consecutive quick taps accumulate by using the most recently requested seek position.
 - The interface displays the most recent requested correction and the sum of manual nudges in the current listening session. This is a command log, not a measurement of the audible time shift.
@@ -198,6 +198,24 @@ bash scripts/generate-audio-format-fixtures.sh
 Use a supported Android device or an emulator. The dedicated [compressed-audio CI workflow](.github/workflows/audio-formats.yml) performs the same test using an Android emulator when audio-indexing code changes. This test verifies local container/decoder handling, **not** acoustic synchronization against an external speaker or headphone latency.
 
 The next physical test should select the *same compressed file* on the external player and the phone, wait for `解析完了`, then check automatic synchronization and the manual ±50 ms adjustment. Re-encoded versions of a song can have different encoder delay or padding and should be measured separately.
+
+## Smooth timing adjustment without repeated seeks (v0.2.10-dev)
+
+**Why the change:** On a real Android device, pressing the `+50 ms` button during playback made the music sound paused or reloading. Version 0.2.9 used `Media3.seekTo()` for every button press, and a seek can trigger buffering even when playback intent (`playWhenReady`) is still true.
+
+In v0.2.10, pressing `＋50 ms 進める` or `−50 ms 遅らせる` **does not seek or pause the local media**. Instead, the app requests a temporary small speed change through Media3:
+
+- `+50 ms` queues ~50 ms of forward correction by temporarily playing at **1.05x**, which takes approximately 1 second at that speed.
+- `-50 ms` queues ~50 ms of backward correction by temporarily playing at **0.95x**, also roughly 1 second.
+- Media3's speed adjustment aims to **preserve pitch**. Audible time-stretch artifacts or buffering can still depend on the device and selected codec.
+- Repeated taps queue additional corrections; taps in the opposite direction can cancel remaining correction. Pending correction is capped at ±500 ms to avoid very long adjustments.
+- The screen shows the requested playback speed and the *approximate remaining correction*, not an independently measured acoustic offset. The implementation uses elapsed monotonic time while playback is active to estimate how much of the request has been applied.
+- The speed returns to **1.00x** at the end of the correction and whenever playback is paused, the file is changed, or the Activity stops. The initial synchronization seek is unchanged.
+- The separate headphone offset slider remains a calibration for the **next initial lock**, and is not modified by these buttons.
+
+This experiment prioritizes continuous listening over instantaneous 50 ms movement. Changing the speed may itself introduce temporary buffering, so compare both directions on the actual device.
+
+**Testing:** pure JVM tests cover forward/backward changes, repeated taps, cancellation, buffering time and bounded queues. A dedicated Android emulator test exercises Media3's speed setting and playback intent. Neither substitutes for an audible end-to-end device test.
 
 ## Development status and build instructions
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">音声同期プレーヤー</string>
-    <string name="prototype_notice">実験版 v0.2.9：再生中の±50 ms手動補正とMP3・M4A音源の解析に実験対応しています。初回同期後の自動補正は行いません。</string>
+    <string name="prototype_notice">実験版 v0.2.10：±50 ms補正は再生速度を一時的に変更します。再生中にシークせず、音楽を聴きながら調整する実験版です。</string>
     <string name="choose_audio">音声ファイルを選択</string>
     <string name="no_audio">音源が選択されていません</string>
     <string name="play_audio">再生</string>
