@@ -163,6 +163,18 @@ Automatic starts and manual Play/Resume now use a **600 ms smooth fade-in** of p
 
 Media3 playback supports commonly used MP3 and M4A containers, subject to codec/device support. However, the *reference-feature indexing* pipeline still uses Android `MediaExtractor` / `MediaCodec` for non-WAV formats and has not been validated on real MP3/M4A recordings. Thus the current build must **not** be advertised as fully supporting automatic synchronization for those formats. Separate format-by-format device tests should come after validating the waveform and user controls with known-working WAV recordings.
 
+## Manual fine adjustment during playback (v0.2.8-dev)
+
+Two new buttons directly beneath the Play/Pause button allow **−50 ms 戻る** and **＋50 ms 進む** while a local recording is playing. They use the Media3 player's `seekTo()` to move the local playhead without calling Pause, stopping the microphone, changing playback speed, or re-arming automatic initial synchronization.
+
+- Each tap moves the **local** playhead by about 50 milliseconds. Consecutive quick taps accumulate by using the most recently requested seek position.
+- The interface displays the most recent requested correction and the sum of manual nudges in the current listening session. This is a command log, not a measurement of the audible time shift.
+- The buttons are available only after a recording is prepared and playback has been requested. They are disabled during the initial automatic seek and while playback is paused.
+- **The existing headphone offset slider is separate**: it affects the *next* initial automatic alignment. The ±50 ms buttons act immediately on the current playback and do not modify the stored offset.
+- The app never seeks automatically again during continuous playback in this experimental mode. However, Media3 seeks may briefly buffer or make an audible discontinuity. They cannot guarantee artifact-free correction, especially for compressed audio.
+
+This small seek is a deliberate first experiment. If even ±50 ms seeks are distracting, a future approach could briefly vary playback speed to accumulate a correction smoothly rather than jumping.
+
 ## Development status and build instructions
 
 The committed Android screen supports:
