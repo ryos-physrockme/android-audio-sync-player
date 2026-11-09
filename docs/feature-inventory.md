@@ -1,7 +1,7 @@
 # 機能一覧 — Android Audio Sync Player
 
 更新日: 2026-11-09  
-対象実装: Androidアプリ `0.3.0-dev`（`app/build.gradle.kts`）。本書では **実装済み**、**部分対応・検証中**、**未実装**を区別する。
+対象実装: Androidアプリ `0.3.1-dev`（`app/build.gradle.kts`）。本書では **実装済み**、**部分対応・検証中**、**未実装**を区別する。
 
 ## アプリの目的
 
