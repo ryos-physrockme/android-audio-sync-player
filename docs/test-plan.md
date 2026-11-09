@@ -2,6 +2,12 @@
 
 **Current test coverage:** deterministic JVM tests exercise synthetic equal-recording matching, altered gain/noise, silence rejection, repeated segments, temporal agreement and resampling. The CI build tests compilation only; no acoustic room or headset measurements have been performed. The experiments below remain outstanding.
 
+## Field troubleshooting for the first Android build
+
+When a candidate time is displayed but the phone remains silent, capture these on-screen diagnostics: match score, score margin, confirmation status, and player status. Distinguish low-confidence or discontinuous candidate streams from a successful seek with missing playback. Do not treat a displayed candidate position as a successful lock.
+
+Version 0.2.1-dev uses a bounded fallback for the MediaPlayer seek-completion callback. Check whether the fallback was used and measure any extra audible timing error if it is.
+
 ## What to measure
 
 The goal is not just a correct track label. It is the difference between the acoustic signal heard from the external source and the locally played reference at the listener.
